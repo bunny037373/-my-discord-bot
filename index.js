@@ -1,5 +1,10 @@
-const { Client, GatewayIntentBits } = require('discord.js');
+﻿const { Client, GatewayIntentBits } = require('discord.js');
 const http = require('http');
+
+if (!process.env.TOKEN) {
+  console.error("❌ TOKEN not found. Add TOKEN in Render Environment Variables.");
+  process.exit(1);
+}
 
 const client = new Client({
   intents: [
@@ -10,28 +15,25 @@ const client = new Client({
 });
 
 client.once('ready', () => {
-  console.log('? Logged in as ' + client.user.tag);
+  console.log(`✅ Logged in as ${client.user.tag}`);
 });
 
-client.on('messageCreate', message => {
+client.on('messageCreate', (message) => {
   if (message.author.bot) return;
   if (message.content === '!ping') {
-    message.channel.send('Pong! ??');
+    message.channel.send('Pong! 🏓').catch(console.error);
   }
 });
 
-if (!process.env.TOKEN) {
-  console.error('? No TOKEN environment variable found!');
-  process.exit(1);
-}
-
+// Login
 client.login(process.env.TOKEN);
 
-// Web server to keep Render service alive
+// Web server for Render + UptimeRobot
 const PORT = process.env.PORT || 3000;
+
 http.createServer((req, res) => {
   res.writeHead(200, { 'Content-Type': 'text/plain' });
   res.end('Bot is running!');
 }).listen(PORT, () => {
-  console.log('?? Web server running on port ' + PORT);
+  console.log(`🌐 Web server running on port ${PORT}`);
 });
