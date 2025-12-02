@@ -1,5 +1,5 @@
 // Import necessary modules
-const { Client, GatewayIntentBits, ActionRowBuilder, ButtonBuilder, ButtonStyle } = require('discord.js');
+const { Client, GatewayIntentBits, ActionRowBuilder, ButtonBuilder, ButtonStyle, REST, Routes, SlashCommandBuilder } = require('discord.js');
 const http = require('http');
 
 // Check TOKEN
@@ -19,24 +19,47 @@ const client = new Client({
 
 // Channel to monitor
 const TARGET_CHANNEL_ID = '1415134887232540764';
+const GUILD_ID = 'YOUR_GUILD_ID_HERE'; // Replace with your server ID
 
-client.once('ready', () => {
+// Register slash commands on ready
+client.once('ready', async () => {
   console.log(`✅ Logged in as ${client.user.tag}`);
+
+  const commands = [
+    new SlashCommandBuilder()
+      .setName('say')
+      .setDescription('Make the bot say something!')
+      .addStringOption(option =>
+        option.setName('text')
+          .setDescription('The message the bot will say')
+          .setRequired(true)
+      )
+      .toJSON()
+  ];
+
+  const rest = new REST({ version: '10' }).setToken(process.env.TOKEN);
+  try {
+    await rest.put(
+      Routes.applicationGuildCommands(client.user.id, GUILD_ID),
+      { body: commands }
+    );
+    console.log('✅ Slash commands registered.');
+  } catch (err) {
+    console.error('Failed to register slash commands:', err);
+  }
 });
 
+// Message handler
 client.on('messageCreate', async (message) => {
   if (message.author.bot) return;
-
-  // Only monitor the target channel
   if (message.channel.id !== TARGET_CHANNEL_ID) return;
 
-  // Check if the message has an image
+  // Delete text-only messages
   const hasImage = message.attachments.some(att => 
     att.contentType?.startsWith('image/') || 
     att.name?.match(/\.(jpg|jpeg|png|gif)$/i)
   );
 
-  // Delete text-only messages
   if (!hasImage) {
     try {
       await message.delete();
@@ -47,19 +70,15 @@ client.on('messageCreate', async (message) => {
     return;
   }
 
-  // React with ✨ on messages with images
-  try {
-    await message.react('✨');
-  } catch (err) {
-    console.error("Failed to react:", err);
-  }
+  // React with ✨
+  try { await message.react('✨'); } catch(err){ console.error("Failed to react:", err); }
 
-  // Automatically create a thread
+  // Auto thread creation
   let thread;
   try {
     thread = await message.startThread({
       name: `Thread: ${message.author.username}`,
-      autoArchiveDuration: 60, // minutes
+      autoArchiveDuration: 60,
       reason: 'Automatic thread creation'
     });
   } catch (err) {
@@ -67,7 +86,7 @@ client.on('messageCreate', async (message) => {
     return;
   }
 
-  // Add control buttons to the thread
+  // Add buttons
   try {
     const row = new ActionRowBuilder().addComponents(
       new ButtonBuilder()
@@ -79,55 +98,61 @@ client.on('messageCreate', async (message) => {
         .setLabel('Edit Title')
         .setStyle(ButtonStyle.Primary)
     );
-
     await thread.send({ content: 'Thread controls:', components: [row] });
   } catch (err) {
     console.error('Failed to send buttons:', err);
   }
 });
 
-// Button interaction handler
+// Interaction handler (buttons + slash commands)
 client.on('interactionCreate', async (interaction) => {
-  if (!interaction.isButton()) return;
+  if (interaction.isButton()) {
+    const thread = interaction.channel;
 
-  const thread = interaction.channel;
+    if (!thread.isThread()) {
+      return interaction.reply({ content: 'This button must be used in a thread.', ephemeral: true });
+    }
 
-  if (!thread.isThread()) {
-    return interaction.reply({ content: 'This button must be used in a thread.', ephemeral: true });
-  }
+    if (interaction.customId === 'archive_thread') {
+      try {
+        await thread.setArchived(true);
+        await interaction.reply({ content: 'Thread archived ✅', ephemeral: true });
+      } catch (err) { console.error(err); }
+    }
 
-  // Archive thread
-  if (interaction.customId === 'archive_thread') {
-    try {
-      await thread.setArchived(true);
-      await interaction.reply({ content: 'Thread archived ✅', ephemeral: true });
-    } catch (err) {
-      console.error(err);
+    if (interaction.customId === 'edit_title') {
+      await interaction.reply({ content: 'Reply with the new thread title. You have 30 seconds.', ephemeral: true });
+      const filter = m => m.author.id === interaction.user.id;
+      const collector = thread.createMessageCollector({ filter, time: 30000, max: 1 });
+
+      collector.on('collect', async (msg) => {
+        try {
+          await thread.setName(msg.content);
+          await msg.delete();
+          await interaction.followUp({ content: 'Thread title updated ✅', ephemeral: true });
+        } catch (err) { console.error(err); }
+      });
+
+      collector.on('end', collected => {
+        if (collected.size === 0) {
+          interaction.followUp({ content: 'No new title received. Cancelled.', ephemeral: true });
+        }
+      });
     }
   }
 
-  // Edit thread title
-  if (interaction.customId === 'edit_title') {
-    await interaction.reply({ content: 'Reply with the new thread title. You have 30 seconds.', ephemeral: true });
+  // Slash command handler
+  if (interaction.isChatInputCommand()) {
+    if (interaction.commandName === 'say') {
+      const text = interaction.options.getString('text');
 
-    const filter = m => m.author.id === interaction.user.id;
-    const collector = thread.createMessageCollector({ filter, time: 30000, max: 1 });
-
-    collector.on('collect', async (msg) => {
-      try {
-        await thread.setName(msg.content);
-        await msg.delete();
-        await interaction.followUp({ content: 'Thread title updated ✅', ephemeral: true });
-      } catch (err) {
-        console.error(err);
+      // Restrict: only users with ManageMessages permission
+      if (!interaction.memberPermissions.has('ManageMessages')) {
+        return interaction.reply({ content: '❌ You do not have permission to use this command.', ephemeral: true });
       }
-    });
 
-    collector.on('end', collected => {
-      if (collected.size === 0) {
-        interaction.followUp({ content: 'No new title received. Cancelled.', ephemeral: true });
-      }
-    });
+      await interaction.reply({ content: text });
+    }
   }
 });
 
