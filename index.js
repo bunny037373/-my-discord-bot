@@ -26,7 +26,7 @@ client.once('ready', async () => {
   const commands = [
     new SlashCommandBuilder()
       .setName('say')
-      .setDescription('Make the bot say something')
+      .setDescription('Make the bot say something anonymously')
       .addStringOption(option =>
         option.setName('text')
           .setDescription('Text for the bot to say')
@@ -54,11 +54,19 @@ client.on('interactionCreate', async (interaction) => {
   if (interaction.isChatInputCommand()) {
     if (interaction.commandName === 'say') {
       const text = interaction.options.getString('text');
-      await interaction.reply({ content: text });
+
+      // Send anonymously as the bot in the same channel
+      try {
+        await interaction.channel.send(text);
+        await interaction.reply({ content: '✅ Message sent anonymously!', ephemeral: true });
+      } catch (err) {
+        console.error(err);
+        await interaction.reply({ content: '❌ Failed to send message.', ephemeral: true });
+      }
     }
   }
 
-  // Handle button interactions (archive/edit title)
+  // Handle buttons (archive/edit title)…
   if (interaction.isButton()) {
     const thread = interaction.channel;
     if (!thread.isThread()) {
@@ -69,9 +77,7 @@ client.on('interactionCreate', async (interaction) => {
       try {
         await thread.setArchived(true);
         await interaction.reply({ content: 'Thread archived ✅', ephemeral: true });
-      } catch (err) {
-        console.error(err);
-      }
+      } catch (err) { console.error(err); }
     }
 
     if (interaction.customId === 'edit_title') {
@@ -85,9 +91,7 @@ client.on('interactionCreate', async (interaction) => {
           await thread.setName(msg.content);
           await msg.delete();
           await interaction.followUp({ content: 'Thread title updated ✅', ephemeral: true });
-        } catch (err) {
-          console.error(err);
-        }
+        } catch (err) { console.error(err); }
       });
 
       collector.on('end', collected => {
@@ -99,7 +103,7 @@ client.on('interactionCreate', async (interaction) => {
   }
 });
 
-// Handle normal messages (image deletion, threads, reactions)
+// Message handler (image deletion, thread creation, reactions)
 client.on('messageCreate', async (message) => {
   if (message.author.bot) return;
 
