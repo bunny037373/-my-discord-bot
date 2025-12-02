@@ -60,7 +60,7 @@ client.on('messageCreate', async (message) => {
           .setStyle(ButtonStyle.Primary)
       );
 
-      await thread.send({ content: 'Thread controls:', components: [row] });
+      await thread.send({ content: '', components: [row] });
     } catch (err) {
       console.error('Failed to create thread or add buttons:', err);
     }
