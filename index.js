@@ -1,4 +1,4 @@
-const { Client, GatewayIntentBits, Events } = require('discord.js');
+const { Client, GatewayIntentBits } = require('discord.js');
 const http = require('http');
 
 if (!process.env.TOKEN) {
@@ -23,26 +23,18 @@ client.once('ready', () => {
 client.on('messageCreate', async (message) => {
   if (message.author.bot) return;
 
-  // Example ping command
-  if (message.content === '!ping') {
-    message.channel.send('Pong! 🏓').catch(console.error);
-    return;
-  }
-
-  // Only check messages in the specific channel
+  // Only check the specific channel
   if (message.channel.id === TARGET_CHANNEL_ID) {
-    // Check if message has attachments (images)
-    const hasImage = message.attachments.some(att => att.contentType?.startsWith('image/') || att.name?.match(/\.(jpg|jpeg|png|gif)$/i));
+    const hasImage = message.attachments.some(att => 
+      att.contentType?.startsWith('image/') || 
+      att.name?.match(/\.(jpg|jpeg|png|gif)$/i)
+    );
 
     if (!hasImage) {
       try {
-        await message.delete(); // delete message
-        await message.reply({ 
-          content: "I think you accidentally forgot to put in an image with your text.", 
-          ephemeral: true // only visible to the user
-        }).catch(() => {}); // catch errors silently
+        await message.delete(); // delete text-only message instantly
       } catch (err) {
-        console.error("Failed to delete message or send ephemeral reply:", err);
+        console.error("Failed to delete message:", err);
       }
     }
   }
@@ -51,5 +43,12 @@ client.on('messageCreate', async (message) => {
 // Login
 client.login(process.env.TOKEN);
 
-// Web server for Render + UptimeRobot
-const PORT = process.env.PORT || 30
+// Minimal web server for Render uptime
+const PORT = process.env.PORT || 3000;
+
+http.createServer((req, res) => {
+  res.writeHead(200, { 'Content-Type': 'text/plain' });
+  res.end('Bot is running!');
+}).listen(PORT, () => {
+  console.log(`🌐 Web server running on port ${PORT}`);
+});
