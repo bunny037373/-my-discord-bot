@@ -16,6 +16,22 @@ if (!process.env.TOKEN) {
   process.exit(1);
 }
 
+// ====================== CONFIG ======================
+
+const TARGET_CHANNEL_ID = '1415134887232540764';
+const GUILD_ID = '1369477266958192720';
+const LOG_CHANNEL_ID = '1414286807360602112';
+
+const HELP_MESSAGE = `hello! Do you need help?
+Please go to https://discord.com/channels/1369477266958192720/1414304297122009099
+and for more assistance please use
+https://discord.com/channels/1369477266958192720/1414352972304879626
+channel to create a more helpful environment to tell a mod`;
+
+const BAD_WORDS = ["fuck", "shit", "ass", "bitch"];
+
+// =====================================================
+
 const client = new Client({
   intents: [
     GatewayIntentBits.Guilds,
@@ -25,22 +41,17 @@ const client = new Client({
   ]
 });
 
-const TARGET_CHANNEL_ID = '1415134887232540764';
-const GUILD_ID = '1369477266958192720';
-const LOG_CHANNEL_ID = '1414286807360602112';
-
-// BAD WORD FILTER
-const BAD_WORDS = ['fuck','shit','ass','bitch'];
-
-// SCAM FILTER
-const SCAM_WORDS = ['free nitro','steam gift','crypto','wallet','airdrop','bitcoin','@everyone'];
-
-/* ----------------------- READY + SLASH CMDS ----------------------- */
-
+// ================= READY =================
 client.once('ready', async () => {
   console.log(`✅ Logged in as ${client.user.tag}`);
 
+  client.user.setPresence({
+    activities: [{ name: 'hopping all around Toon Springs 🐇', type: 0 }],
+    status: 'online'
+  });
+
   const commands = [
+
     new SlashCommandBuilder()
       .setName('say')
       .setDescription('Make the bot say something anonymously')
@@ -52,129 +63,160 @@ client.once('ready', async () => {
 
     new SlashCommandBuilder()
       .setName('help')
-      .setDescription('Get help info (Only you can see)')
+      .setDescription('Get help'),
+
+    new SlashCommandBuilder()
+      .setName('serverinfo')
+      .setDescription('Get server information'),
+
+    new SlashCommandBuilder()
+      .setName('kick')
+      .setDescription('Kick a member')
+      .addUserOption(option =>
+        option.setName('user').setDescription('User to kick').setRequired(true)
+      ),
+
+    new SlashCommandBuilder()
+      .setName('ban')
+      .setDescription('Ban a member')
+      .addUserOption(option =>
+        option.setName('user').setDescription('User to ban').setRequired(true)
+      ),
+
+    new SlashCommandBuilder()
+      .setName('unban')
+      .setDescription('Unban a user by ID')
+      .addStringOption(option =>
+        option.setName('userid').setDescription('User ID').setRequired(true)
+      ),
+
+    new SlashCommandBuilder()
+      .setName('timeout')
+      .setDescription('Timeout a member (minutes)')
+      .addUserOption(option =>
+        option.setName('user').setDescription('User').setRequired(true)
+      )
+      .addIntegerOption(option =>
+        option.setName('minutes').setDescription('Minutes').setRequired(true)
+      )
+
   ].map(cmd => cmd.toJSON());
 
   const rest = new REST({ version: '10' }).setToken(process.env.TOKEN);
 
   try {
-    console.log('⚡ Registering slash commands...');
+    console.log('⚡ Registering commands...');
     await rest.put(
       Routes.applicationGuildCommands(client.user.id, GUILD_ID),
       { body: commands }
     );
-    console.log('✅ Commands registered!');
+    console.log('✅ Slash commands registered.');
   } catch (err) {
     console.error(err);
   }
 });
 
-/* ----------------------- SLASH COMMAND HANDLER ----------------------- */
-
+// ================= SLASH COMMANDS =================
 client.on('interactionCreate', async (interaction) => {
+  if (!interaction.isChatInputCommand()) return;
 
-  /* /SAY */
-  if (interaction.isChatInputCommand() && interaction.commandName === 'say') {
+  const isMod = interaction.member.permissions.has(PermissionsBitField.Flags.ModerateMembers);
+
+  if (interaction.commandName === 'say') {
     const text = interaction.options.getString('text');
-
     await interaction.channel.send(text);
-    return interaction.reply({ content: '✅ Sent as bot (anonymous)', ephemeral: true });
+    return interaction.reply({ content: "✅ Sent anonymously", ephemeral: true });
   }
 
-  /* /HELP */
-  if (interaction.isChatInputCommand() && interaction.commandName === 'help') {
+  if (interaction.commandName === 'help') {
+    return interaction.reply({ content: HELP_MESSAGE, ephemeral: true });
+  }
+
+  if (interaction.commandName === 'serverinfo') {
+    const guild = interaction.guild;
     return interaction.reply({
       content:
-        "hello! Do you need help?\n\n" +
-        "Please go to:\n" +
-        "https://discord.com/channels/1369477266958192720/1414304297122009099\n\n" +
-        "For more assistance please use:\n" +
-        "https://discord.com/channels/1369477266958192720/1414352972304879626\n\n" +
-        "To tell a mod: <@557628352828014614>",
+        `**Server Name:** ${guild.name}\n**Members:** ${guild.memberCount}\n**Created:** ${guild.createdAt.toDateString()}`,
       ephemeral: true
     });
   }
 
+  if (!isMod) {
+    return interaction.reply({ content: '❌ Mods only', ephemeral: true });
+  }
 
+  if (interaction.commandName === 'kick') {
+    const user = interaction.options.getUser('user');
+    const member = interaction.guild.members.cache.get(user.id);
+    if (!member) return interaction.reply({ content: "User not found", ephemeral: true });
 
-  /* BUTTONS - BAN & KICK */
+    await member.kick();
+    return interaction.reply({ content: `✅ Kicked ${user.tag}`, ephemeral: true });
+  }
 
-  if (interaction.isButton()) {
-    const member = interaction.guild.members.cache.get(interaction.customId.split('_')[1]);
+  if (interaction.commandName === 'ban') {
+    const user = interaction.options.getUser('user');
+    await interaction.guild.members.ban(user.id);
+    return interaction.reply({ content: `✅ Banned ${user.tag}`, ephemeral: true });
+  }
 
-    if (!interaction.member.permissions.has(PermissionsBitField.Flags.ModerateMembers)) {
-      return interaction.reply({ content: "❌ You don't have permission.", ephemeral: true });
-    }
+  if (interaction.commandName === 'unban') {
+    const id = interaction.options.getString('userid');
+    await interaction.guild.members.unban(id);
+    return interaction.reply({ content: `✅ Unbanned ${id}`, ephemeral: true });
+  }
 
-    if (interaction.customId.startsWith('kick_')) {
-      await member.kick();
-      await interaction.reply({ content: `✅ Kicked ${member.user.tag}`, ephemeral: true });
-    }
+  if (interaction.commandName === 'timeout') {
+    const user = interaction.options.getUser('user');
+    const minutes = interaction.options.getInteger('minutes');
+    const member = interaction.guild.members.cache.get(user.id);
 
-    if (interaction.customId.startsWith('ban_')) {
-      await member.ban();
-      await interaction.reply({ content: `✅ Banned ${member.user.tag}`, ephemeral: true });
-    }
+    const duration = minutes * 60 * 1000;
+    await member.timeout(duration);
+
+    return interaction.reply({ content: `✅ Timed out ${user.tag} for ${minutes} minutes`, ephemeral: true });
   }
 });
 
-/* ----------------------- MESSAGE FILTER SYSTEM ----------------------- */
 
+// ================= AUTO MODERATION =================
 client.on('messageCreate', async (message) => {
   if (message.author.bot) return;
 
-  const text = message.content.toLowerCase();
+  const content = message.content.toLowerCase();
 
-  /* DELETE CUSS WORDS */
-  if (BAD_WORDS.some(word => text.includes(word))) {
-    await message.delete().catch(()=>{});
+  // DELETE CUSS WORDS
+  if (BAD_WORDS.some(word => content.includes(word))) {
+    await message.delete();
     return;
   }
 
-  /* SCAM / SPAM DETECT */
-  if (SCAM_WORDS.some(w => text.includes(w)) || message.mentions.everyone) {
+  // DETECT SCAM / SPAM
+  const suspicious =
+    content.includes('free nitro') ||
+    content.includes('bitcoin') ||
+    content.includes('steam gift') ||
+    content.includes('http://') ||
+    content.includes('https://');
 
-    await message.delete().catch(()=>{});
+  if (suspicious) {
+    await message.delete();
 
     try {
       const member = message.member;
+      await member.timeout(5 * 60 * 1000);
 
-      // Timeout for 5 minutes
-      await member.timeout(5 * 60 * 1000, 'Spam/Scam detected');
-
-      // Send mod buttons in LOG channel
       const log = client.channels.cache.get(LOG_CHANNEL_ID);
-
-      const row = new ActionRowBuilder().addComponents(
-        new ButtonBuilder()
-          .setCustomId(`kick_${member.id}`)
-          .setLabel("KICK")
-          .setStyle(ButtonStyle.Danger),
-        new ButtonBuilder()
-          .setCustomId(`ban_${member.id}`)
-          .setLabel("BAN")
-          .setStyle(ButtonStyle.Danger)
-      );
-
-      await log.send({
-        content: `🚨 **SCAM/SPAM DETECTED**\nUser: ${member}\nMessage: ${message.content}`,
-        components: [row]
-      });
-
-    } catch (err) {
-      console.error(err);
-    }
+      if (log) {
+        log.send(`🚨 **Auto Timeout**  
+User: ${message.author.tag}
+Message: ${message.content}`);
+      }
+    } catch {}
     return;
   }
 
-  /* FOREIGN LANGUAGE DETECT (simple unicode scan) */
-  if (/[^\u0000-\u007F]/.test(message.content)) {
-    await message.channel.send(
-      "🌐 **Translation:** (Feature coming soon — detected non-English text)"
-    );
-  }
-
-  /* IMAGE THREAD SYSTEM */
+  // IMAGE ONLY CHANNEL THREAD SYSTEM
   if (message.channel.id === TARGET_CHANNEL_ID) {
     const hasImage = message.attachments.some(att =>
       att.contentType?.startsWith('image/') ||
@@ -182,13 +224,14 @@ client.on('messageCreate', async (message) => {
     );
 
     if (!hasImage) {
-      await message.delete().catch(()=>{});
+      await message.delete().catch(() => {});
       return;
     }
 
     const thread = await message.startThread({
       name: `Thread: ${message.author.username}`,
-      autoArchiveDuration: 60
+      autoArchiveDuration: 60,
+      reason: 'Automatic'
     });
 
     const row = new ActionRowBuilder().addComponents(
@@ -196,23 +239,52 @@ client.on('messageCreate', async (message) => {
         .setCustomId('archive_thread')
         .setLabel('Archive Thread')
         .setStyle(ButtonStyle.Danger),
+
       new ButtonBuilder()
         .setCustomId('edit_title')
         .setLabel('Edit Title')
         .setStyle(ButtonStyle.Primary)
     );
 
-    await thread.send({ content: 'Thread controls:', components: [row] });
+    await thread.send({ content: "Thread controls:", components: [row] });
   }
 });
 
 
-/* ----------------------- LOGIN + KEEP ALIVE ----------------------- */
+// ================= THREAD BUTTONS =================
+client.on('interactionCreate', async (interaction) => {
+  if (!interaction.isButton()) return;
 
+  const thread = interaction.channel;
+  if (!thread.isThread()) {
+    return interaction.reply({ content: "Use inside a thread", ephemeral: true });
+  }
+
+  if (interaction.customId === 'archive_thread') {
+    await thread.setArchived(true);
+    return interaction.reply({ content: "✅ Archived", ephemeral: true });
+  }
+
+  if (interaction.customId === 'edit_title') {
+    await interaction.reply({ content: "Send new title. 30s.", ephemeral: true });
+
+    const filter = m => m.author.id === interaction.user.id;
+    const collector = thread.createMessageCollector({ filter, time: 30000, max: 1 });
+
+    collector.on('collect', async (msg) => {
+      await thread.setName(msg.content);
+      await msg.delete();
+      await interaction.followUp({ content: "✅ Title updated", ephemeral: true });
+    });
+  }
+});
+
+
+// ================= LOGIN + SERVER =================
 client.login(process.env.TOKEN);
 
 const PORT = process.env.PORT || 3000;
 http.createServer((req, res) => {
   res.writeHead(200);
-  res.end('Bot is running!');
-}).listen(PORT, () => console.log(`🌐 Web server running on ${PORT}`));
+  res.end("Bot is running!");
+}).listen(PORT, () => console.log(`🌐 Server running on ${PORT}`));
