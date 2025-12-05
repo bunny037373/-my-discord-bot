@@ -30,7 +30,25 @@ and for more assistance please use
 https://discord.com/channels/1369477266958192720/1414352972304879626
 channel to create a more helpful environment to tell a mod`;
 
-const BAD_WORDS = ["fuck", "shit", "ass", "bitch"];
+// ================= STRICT FILTER CONFIG =================
+// Comprehensive list of bad words, slurs, and bypass attempts
+const BAD_WORDS = [
+  "fuck", "shit", "ass", "bitch", "hoe", "whore", "slut", "cunt", "dick", "pussy", "cock", "bastard",
+  "nigger", "nigga", "niga", "faggot", "fag", "dyke", "tranny", "chink", "kike", "paki", "gook", "spic", "beaner", "coon", // Racial/Homophobic Slurs
+  "retard", "spastic", "mong", "autist",
+  "kys", "kill yourself", "suicide", "rape", "molest",
+  "hitler", "nazi", "kkk"
+];
+
+// Map for detecting Leetspeak bypasses (e.g. h0e -> hoe)
+const LEET_MAP = {
+  '0': 'o', '1': 'i', '3': 'e', '4': 'a', '5': 's', '7': 't', '@': 'a', '$': 's', '!': 'i', '(': 'c'
+};
+
+// ================= JOIN/LEAVE TRACKER =================
+// Stores user ID -> { count: number, lastJoin: timestamp }
+const joinTracker = new Map(); 
+
 // =====================================================
 
 const client = new Client({
@@ -38,19 +56,34 @@ const client = new Client({
     GatewayIntentBits.Guilds,
     GatewayIntentBits.GuildMessages,
     GatewayIntentBits.MessageContent,
-    GatewayIntentBits.GuildMembers
+    GatewayIntentBits.GuildMembers // Critical for join/leave detection
   ]
 });
 
 // Helper: find mod roles (roles that have ManageMessages or ModerateMembers)
 function getModeratorRoles(guild) {
   return guild.roles.cache.filter(role => {
-    // skip @everyone
     if (role.managed) return false;
-    // check permissions
     const p = role.permissions;
     return p.has(PermissionsBitField.Flags.ManageMessages) || p.has(PermissionsBitField.Flags.ModerateMembers) || p.has(PermissionsBitField.Flags.KickMembers) || p.has(PermissionsBitField.Flags.BanMembers);
   });
+}
+
+// Helper: Normalize text to catch bypasses
+function containsBadWord(text) {
+  if (!text) return false;
+  
+  // 1. Direct check
+  const lower = text.toLowerCase();
+  if (BAD_WORDS.some(word => lower.includes(word))) return true;
+
+  // 2. Normalize (Remove spaces, symbols, convert leetspeak)
+  let normalized = lower.split('').map(char => LEET_MAP[char] || char).join('');
+  normalized = normalized.replace(/[^a-z]/g, ''); // Remove non-letters
+
+  // Check normalized string against bad words
+  // logic: if the normalized string contains a bad word, it's a bypass attempt
+  return BAD_WORDS.some(word => normalized.includes(word));
 }
 
 // ================= READY =================
@@ -72,7 +105,6 @@ client.once('ready', async () => {
     new SlashCommandBuilder().setName('help').setDescription('Get help'),
     new SlashCommandBuilder().setName('serverinfo').setDescription('Get server information'),
 
-    // moderation commands (mods only)
     new SlashCommandBuilder()
       .setName('kick')
       .setDescription('Kick a member')
@@ -94,7 +126,6 @@ client.once('ready', async () => {
       .addUserOption(opt => opt.setName('user').setDescription('User').setRequired(true))
       .addIntegerOption(opt => opt.setName('minutes').setDescription('Minutes').setRequired(true)),
 
-    // NEW: setup command to post ticket creator
     new SlashCommandBuilder()
       .setName('setup')
       .setDescription('Post the ticket creation message in the tickets channel')
@@ -112,12 +143,13 @@ client.once('ready', async () => {
 
 // ================= SLASH COMMANDS =================
 client.on('interactionCreate', async (interaction) => {
-  // Slash commands handling
   if (interaction.isChatInputCommand()) {
     const isMod = interaction.member.permissions.has(PermissionsBitField.Flags.ModerateMembers) || interaction.member.permissions.has(PermissionsBitField.Flags.ManageMessages);
 
     if (interaction.commandName === 'say') {
       const text = interaction.options.getString('text');
+      // Filter /say command too
+      if (containsBadWord(text)) return interaction.reply({ content: "❌ You cannot make me say that.", ephemeral: true });
       await interaction.channel.send(text);
       return interaction.reply({ content: "✅ Sent anonymously", ephemeral: true });
     }
@@ -135,7 +167,6 @@ client.on('interactionCreate', async (interaction) => {
       });
     }
 
-    // require mod for the following
     if (['kick','ban','unban','timeout','setup'].includes(interaction.commandName) && !isMod) {
       return interaction.reply({ content: '❌ Mods only', ephemeral: true });
     }
@@ -169,7 +200,6 @@ client.on('interactionCreate', async (interaction) => {
       return interaction.reply({ content: `✅ Timed out ${user.tag} for ${minutes} minutes`, ephemeral: true });
     }
 
-    // NEW: /setup - posts the create-ticket message in SETUP_POST_CHANNEL
     if (interaction.commandName === 'setup') {
       try {
         const postChannel = await client.channels.fetch(SETUP_POST_CHANNEL);
@@ -190,7 +220,6 @@ client.on('interactionCreate', async (interaction) => {
 
   // Button interactions (tickets + thread buttons)
   if (interaction.isButton()) {
-    // ---------- Ticket: Create ----------
     if (interaction.customId === 'create_ticket') {
       await interaction.deferReply({ ephemeral: true });
 
@@ -201,9 +230,7 @@ client.on('interactionCreate', async (interaction) => {
         const short = Math.floor(Math.random() * 9000 + 1000);
         const chanName = `ticket-${username}-${short}`;
 
-        // Collect mod roles to allow viewing
         const modRoles = getModeratorRoles(guild);
-        // Build permission overwrites: deny @everyone, allow user and bot, allow mod roles
         const overwrites = [
           { id: guild.roles.everyone.id, deny: [PermissionsBitField.Flags.ViewChannel] },
           { id: member.user.id, allow: [PermissionsBitField.Flags.ViewChannel, PermissionsBitField.Flags.SendMessages, PermissionsBitField.Flags.ReadMessageHistory] },
@@ -214,7 +241,6 @@ client.on('interactionCreate', async (interaction) => {
           overwrites.push({ id: role.id, allow: [PermissionsBitField.Flags.ViewChannel, PermissionsBitField.Flags.SendMessages, PermissionsBitField.Flags.ReadMessageHistory, PermissionsBitField.Flags.ManageMessages] });
         });
 
-        // Create channel under the same category as the setup post if possible
         let parent = null;
         try {
           const setupChan = await client.channels.fetch(SETUP_POST_CHANNEL);
@@ -223,26 +249,21 @@ client.on('interactionCreate', async (interaction) => {
 
         const ticketChannel = await interaction.guild.channels.create({
           name: chanName,
-          type: 0, // GUILD_TEXT (text)
+          type: 0,
           permissionOverwrites: overwrites,
           parent: parent,
           reason: `Ticket created by ${member.user.tag}`
         });
 
-        // send confirmation ephemeral
         await interaction.editReply({ content: `Ticket created: ${ticketChannel}`, ephemeral: true });
 
-        // Post in setup/catalog channel that ticket created (public)
         try {
           const setupChan = await client.channels.fetch(SETUP_POST_CHANNEL);
           await setupChan.send(`Ticket created ${ticketChannel} — added to Tickets catalog`);
         } catch {}
 
-        // Send the initial message in the ticket
-        // Mention moderators roles if any (pick first few)
         let modMention = '';
         if (modRoles.size > 0) {
-          // mention all mod roles (only stable ones)
           modMention = modRoles.map(r => `<@&${r.id}>`).slice(0, 5).join(' ');
         } else {
           modMention = '@moderators';
@@ -266,17 +287,13 @@ If they want to close it there will be a Close button on top. When close is conf
       }
     }
 
-    // ---------- Ticket: Claim ----------
     if (interaction.customId === 'claim_ticket') {
-      // only allow mods to claim
       const isMod = interaction.member.permissions.has(PermissionsBitField.Flags.ManageMessages) || interaction.member.permissions.has(PermissionsBitField.Flags.ModerateMembers) || interaction.member.permissions.has(PermissionsBitField.Flags.KickMembers);
       if (!isMod) return interaction.reply({ content: 'Only moderators can claim tickets.', ephemeral: true });
 
-      // ensure this is in a ticket channel pattern
       const ch = interaction.channel;
       if (!ch || !ch.name.startsWith('ticket-')) return interaction.reply({ content: 'This button must be used in a ticket channel.', ephemeral: true });
 
-      // if already claimed (we store claimed status in channel topic)
       const topic = ch.topic || '';
       if (topic.startsWith('claimed:')) {
         return interaction.reply({ content: 'Ticket already claimed.', ephemeral: true });
@@ -292,16 +309,13 @@ If they want to close it there will be a Close button on top. When close is conf
       }
     }
 
-    // ---------- Ticket: Close ----------
     if (interaction.customId === 'close_ticket') {
-      // only mods may initiate close
       const isMod = interaction.member.permissions.has(PermissionsBitField.Flags.ManageMessages) || interaction.member.permissions.has(PermissionsBitField.Flags.ModerateMembers) || interaction.member.permissions.has(PermissionsBitField.Flags.KickMembers);
       if (!isMod) return interaction.reply({ content: 'Only moderators can close tickets.', ephemeral: true });
 
       const ch = interaction.channel;
       if (!ch || !ch.name.startsWith('ticket-')) return interaction.reply({ content: 'This button must be used in a ticket channel.', ephemeral: true });
 
-      // ask for confirmation with buttons
       const confirmRow = new ActionRowBuilder().addComponents(
         new ButtonBuilder().setCustomId('confirm_close_yes').setLabel('Yes, close').setStyle(ButtonStyle.Danger),
         new ButtonBuilder().setCustomId('confirm_close_no').setLabel('No, keep open').setStyle(ButtonStyle.Secondary)
@@ -310,9 +324,7 @@ If they want to close it there will be a Close button on top. When close is conf
       await interaction.reply({ content: 'Are you sure you want to close this ticket? This will delete the channel after saving transcript.', components: [confirmRow], ephemeral: true });
     }
 
-    // ---------- Confirm Close: Yes ----------
     if (interaction.customId === 'confirm_close_yes') {
-      // only mods
       const isMod = interaction.member.permissions.has(PermissionsBitField.Flags.ManageMessages) || interaction.member.permissions.has(PermissionsBitField.Flags.ModerateMembers) || interaction.member.permissions.has(PermissionsBitField.Flags.KickMembers);
       if (!isMod) return interaction.reply({ content: 'Only moderators can close tickets.', ephemeral: true });
 
@@ -322,29 +334,24 @@ If they want to close it there will be a Close button on top. When close is conf
       await interaction.deferReply({ ephemeral: true });
 
       try {
-        // collect last 100 messages for transcript
         const fetched = await ch.messages.fetch({ limit: 100 });
-        const msgs = Array.from(fetched.values()).reverse(); // oldest first
+        const msgs = Array.from(fetched.values()).reverse();
 
         let transcript = `Transcript for ${ch.name} (closed by ${interaction.user.tag})\n\n`;
         for (const m of msgs) {
           const time = m.createdAt.toISOString();
           const author = `${m.author.tag}`;
           const content = m.content || '';
-          // include attachments as URLs
           const atts = m.attachments.map(a => a.url).join(' ');
           transcript += `[${time}] ${author}: ${content} ${atts}\n`;
         }
 
-        // send transcript to transcript channel
         const tChan = await client.channels.fetch(TRANSCRIPT_CHANNEL_ID);
         if (tChan) {
-          // if transcript is too long, split
           const MAX = 1900;
           if (transcript.length <= MAX) {
             await tChan.send({ content: `📄 **Ticket closed**: ${ch.name}\nClosed by ${interaction.user.tag}\n\n${transcript}` });
           } else {
-            // chunk
             await tChan.send({ content: `📄 **Ticket closed**: ${ch.name}\nClosed by ${interaction.user.tag}\n\nTranscript (first part):` });
             while (transcript.length > 0) {
               const part = transcript.slice(0, MAX);
@@ -354,7 +361,6 @@ If they want to close it there will be a Close button on top. When close is conf
           }
         }
 
-        // notify and delete channel
         await interaction.editReply({ content: '✅ Transcript saved. Deleting ticket channel...', ephemeral: true });
         await ch.delete('Ticket closed');
       } catch (err) {
@@ -363,44 +369,55 @@ If they want to close it there will be a Close button on top. When close is conf
       }
     }
 
-    // ---------- Confirm Close: No ----------
     if (interaction.customId === 'confirm_close_no') {
       return interaction.reply({ content: 'Close cancelled.', ephemeral: true });
     }
   }
 });
 
-// ================= AUTO MODERATION + IMAGE CHANNEL (existing features) =================
+// ================= AUTO MODERATION + RULES 1-11 =================
 client.on('messageCreate', async (message) => {
   if (message.author.bot) return;
 
   const content = (message.content || '').toLowerCase();
 
-  // DELETE CUSS WORDS (instant delete)
-  if (BAD_WORDS.some(word => content.includes(word))) {
+  // RULE 1: Be Respectful / Strict Bad Word Filter / Racial Slurs / Bypass Detection
+  // This uses the logic "can't tell the difference between bypassing and not bypassing"
+  if (containsBadWord(content)) {
+    await message.delete().catch(() => {});
+    
+    // Warn/Timeout logic for slurs
+    try {
+      const member = message.member;
+      // 30 minute timeout for violation
+      if (member) await member.timeout(30 * 60 * 1000, "Bad Word / Slur / Bypass").catch(() => {});
+      
+      const log = client.channels.cache.get(LOG_CHANNEL_ID);
+      if (log) log.send(`🚨 **Filter Violation**\nUser: <@${message.author.id}>\nContent: ||${message.content}||`);
+    } catch {}
+    return;
+  }
+
+  // RULE 4 & 6: Advertising / Scam / Links
+  const isAdOrScam = 
+    content.includes('discord.gg/') || 
+    content.includes('free nitro') ||
+    content.includes('steam gift') ||
+    content.includes('crypto') ||
+    content.includes('bitcoin');
+
+  if (isAdOrScam) {
     await message.delete().catch(() => {});
     return;
   }
 
-  // DETECT SCAM / SPAM
-  const suspicious =
-    content.includes('free nitro') ||
-    content.includes('bitcoin') ||
-    content.includes('steam gift') ||
-    content.includes('http://') ||
-    content.includes('https://');
-
-  if (suspicious) {
+  // RULE 10: No Doxing (Basic IP detection)
+  // Simple regex for IPv4 addresses
+  const ipRegex = /\b\d{1,3}\.\d{1,3}\.\d{1,3}\.\d{1,3}\b/;
+  if (ipRegex.test(content)) {
     await message.delete().catch(() => {});
-    try {
-      const member = message.member;
-      await member.timeout(5 * 60 * 1000).catch(() => {});
-
-      const log = client.channels.cache.get(LOG_CHANNEL_ID);
-      if (log) {
-        log.send(`🚨 **Auto Timeout**\nUser: ${message.author.tag}\nMessage: ${message.content}`);
-      }
-    } catch {}
+    const log = client.channels.cache.get(LOG_CHANNEL_ID);
+    if (log) log.send(`⚠️ **Possible Dox Attempt**\nUser: <@${message.author.id}>\nContent: ||${message.content}||`);
     return;
   }
 
@@ -437,11 +454,46 @@ client.on('messageCreate', async (message) => {
   }
 });
 
+// ================= RULE 11: JOIN/LEAVE TROLLING =================
+client.on('guildMemberAdd', async (member) => {
+  const userId = member.id;
+  const now = Date.now();
+  
+  // Get existing data
+  const userData = joinTracker.get(userId) || { count: 0, lastJoin: 0 };
+
+  // Reset count if last join was more than 15 minutes ago
+  if (now - userData.lastJoin > 15 * 60 * 1000) {
+    userData.count = 0;
+  }
+
+  userData.count++;
+  userData.lastJoin = now;
+  joinTracker.set(userId, userData);
+
+  // Logic: "One is fine... ten there has to be something done."
+  if (userData.count >= 10) {
+    // Action: Ban the user for trolling
+    try {
+      await member.ban({ reason: 'Rule 11: Excessive Join/Leave Trolling' });
+      const log = client.channels.cache.get(LOG_CHANNEL_ID);
+      if (log) log.send(`🔨 **Auto-Ban (Anti-Troll)**\nUser: ${member.user.tag}\nReason: Joined ${userData.count} times rapidly.`);
+      // clear tracking
+      joinTracker.delete(userId);
+    } catch (err) {
+      console.error('Failed to ban troll:', err);
+    }
+  } else if (userData.count >= 6) {
+    // Action: Log warning
+    const log = client.channels.cache.get(LOG_CHANNEL_ID);
+    if (log) log.send(`⚠️ **Troll Warning**\nUser: ${member.user.tag} has joined ${userData.count} times recently.`);
+  }
+});
+
 // ================= THREAD BUTTONS (existing) =================
 client.on('interactionCreate', async (interaction) => {
   if (!interaction.isButton()) return;
 
-  // ignore ticket related handled earlier; this section is for archive/edit_title on threads
   if (interaction.customId === 'archive_thread' || interaction.customId === 'edit_title') {
     const thread = interaction.channel;
     if (!thread || !thread.isThread()) {
