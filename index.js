@@ -86,6 +86,25 @@ function containsBadWord(text) {
   return BAD_WORDS.some(word => normalized.includes(word));
 }
 
+// Helper: Moderate Nickname (NEW)
+async function moderateNickname(member) {
+  // Check display name (which is nickname if set, or username if not)
+  if (containsBadWord(member.displayName)) {
+    try {
+      // Permission check: Bot can't change owner or people with higher roles
+      if (member.manageable) {
+        await member.setNickname("[moderated nickname by hopper]");
+        
+        // Optional: Notify log
+        const log = member.guild.channels.cache.get(LOG_CHANNEL_ID);
+        if (log) log.send(`🛡️ **Nickname Moderated**\nUser: <@${member.id}>\nOld Name: ||${member.user.username}||\nReason: Inappropriate Username`);
+      }
+    } catch (err) {
+      console.error(`Failed to moderate nickname for ${member.user.tag}:`, err);
+    }
+  }
+}
+
 // ================= READY =================
 client.once('ready', async () => {
   console.log(`✅ Logged in as ${client.user.tag}`);
@@ -380,6 +399,25 @@ client.on('messageCreate', async (message) => {
   if (message.author.bot) return;
 
   const content = (message.content || '').toLowerCase();
+  const member = message.member;
+
+  // RULE 7: UNDERAGE CHECK (NEW)
+  // This matches "i'm X", "i am X", "im X" where X is 1-12 or "under 13"
+  const underageRegex = /\b(i|i'm|im)\s+(am\s+)?(under\s+13|1[0-2]|[1-9])\b/i;
+  
+  if (underageRegex.test(content)) {
+    // Ensure we don't catch "I am 100" by mistake, the regex checks boundary \b
+    await message.delete().catch(() => {});
+    const log = client.channels.cache.get(LOG_CHANNEL_ID);
+    if (log) log.send(`👶 **Underage Admission Detected**\nUser: <@${message.author.id}>\nContent: ||${message.content}||\nAction: Deleted immediately.`);
+    return;
+  }
+
+  // RULE 5: INAPPROPRIATE USERNAME CHECK (NEW)
+  // If they talk and have a bad name, fix it immediately
+  if (member) {
+    await moderateNickname(member);
+  }
 
   // RULE 1: Be Respectful / Strict Bad Word Filter / Racial Slurs / Bypass Detection
   // This uses the logic "can't tell the difference between bypassing and not bypassing"
@@ -388,7 +426,6 @@ client.on('messageCreate', async (message) => {
     
     // Warn/Timeout logic for slurs
     try {
-      const member = message.member;
       // 30 minute timeout for violation
       if (member) await member.timeout(30 * 60 * 1000, "Bad Word / Slur / Bypass").catch(() => {});
       
@@ -456,6 +493,9 @@ client.on('messageCreate', async (message) => {
 
 // ================= RULE 11: JOIN/LEAVE TROLLING =================
 client.on('guildMemberAdd', async (member) => {
+  // RULE 5: Check Nickname on Join (NEW)
+  await moderateNickname(member);
+
   const userId = member.id;
   const now = Date.now();
   
