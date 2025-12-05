@@ -20,17 +20,17 @@ if (!process.env.TOKEN) {
 // ====================== CONFIG ======================
 const TARGET_CHANNEL_ID = '1415134887232540764';
 const GUILD_ID = '1369477266958192720';
-const LOG_CHANNEL_ID = '1414286807360602112';          // existing log channel
-const TRANSCRIPT_CHANNEL_ID = '1414354204079689849';   // transcript channel for closed tickets
-const SETUP_POST_CHANNEL = '1445628128423579660';      // where /setup posts the Create Ticket message
-const MUTE_ROLE_ID = '1446530920650899536';           // Placeholder: **REPLACE THIS WITH YOUR ACTUAL MUTE ROLE ID**
+const LOG_CHANNEL_ID = '1414286807360602112';          // existing log channel
+const TRANSCRIPT_CHANNEL_ID = '1414354204079689849';   // transcript channel for closed tickets
+const SETUP_POST_CHANNEL = '1445628128423579660';      // where /setup posts the Create Ticket message
+const MUTE_ROLE_ID = '1446530920650899536';           // Placeholder: **REPLACE THIS WITH YOUR ACTUAL MUTE ROLE ID**
 
 // NEW RP CONFIGURATION
 const RP_CHANNEL_ID = '1421219064985948346';
 const RP_CATEGORY_ID = '1446530920650899536';
 
-// NICKNAME SCAN INTERVAL (15 seconds)
-const NICKNAME_SCAN_INTERVAL = 15 * 1000;
+// NICKNAME SCAN INTERVAL (5 seconds = 5000 milliseconds)
+const NICKNAME_SCAN_INTERVAL = 5 * 1000;
 
 const HELP_MESSAGE = `hello! Do you need help?
 Please go to https://discord.com/channels/1369477266958192720/1414304297122009099
@@ -41,14 +41,14 @@ channel to create a more helpful environment to tell a mod`;
 // ================= STRICT FILTER CONFIG =================
 // Comprehensive list of bad words, slurs, and bypass attempts (Includes Harassment Jokes/Trolling)
 const BAD_WORDS = [
-  "fuck", "f*ck", "f**k", "shit", "s*it", "s**t", "ass", "bitch", "hoe", "whore", "slut", "cunt", 
-  "dick", "pussy", "cock", "bastard", 
-  "nigger", "nigga", "niga", "faggot", "fag", "dyke", "tranny", "chink", "kike", "paki", "gook", "spic", "beaner", "coon", 
+  "fuck", "f*ck", "f**k", "shit", "s*it", "s**t", "ass", "bitch", "hoe", "whore", "slut", "cunt", 
+  "dick", "pussy", "cock", "bastard", 
+  "nigger", "nigga", "niga", "faggot", "fag", "dyke", "tranny", "chink", "kike", "paki", "gook", "spic", "beaner", "coon", 
   "retard", "spastic", "mong", "autist",
   "kys", "kill yourself", "suicide", "rape", "molest",
   "hitler", "nazi", "kkk",
   "sexy",
-  // Added Harassment/Trolling joke terms
+  // Added Harassment/Trolling joke terms
   "joke about harassing", "troll joke", "harassment funny", "trolling funny", "trollin", "troller"
 ];
 
@@ -59,7 +59,7 @@ const LEET_MAP = {
 
 // ================= JOIN/LEAVE TRACKER =================
 // Stores user ID -> { count: number, lastJoin: timestamp }
-const joinTracker = new Map(); 
+const joinTracker = new Map(); 
 
 // =====================================================
 
@@ -84,9 +84,9 @@ function getModeratorRoles(guild) {
 // Helper: Normalize text to catch bypasses
 function containsBadWord(text) {
   if (!text) return false;
-  
+  
   const lower = text.toLowerCase();
-  
+  
   // 1. Direct check
   if (BAD_WORDS.some(word => lower.includes(word))) return true;
 
@@ -98,7 +98,7 @@ function containsBadWord(text) {
   return BAD_WORDS.some(word => normalized.includes(word));
 }
 
-// Helper: Moderate Nickname 
+// Helper: Moderate Nickname 
 async function moderateNickname(member) {
   // Check display name (which is nickname if set, or username if not)
   if (containsBadWord(member.displayName)) {
@@ -106,11 +106,12 @@ async function moderateNickname(member) {
       // **Bot must have a higher role than the user's highest role for this to work**
       if (member.manageable) {
         await member.setNickname("[moderated nickname by hopper]");
-        
+        
         const log = member.guild.channels.cache.get(LOG_CHANNEL_ID);
         if (log) log.send(`🛡️ **Nickname Moderated**\nUser: <@${member.id}>\nOld Name: ||${member.user.username}||\nReason: Inappropriate Username`);
         return true; // Nickname was moderated
       } else {
+         console.log(`Failed to moderate nickname for ${member.user.tag}: Bot role is lower than user's highest role.`);
          return false; // Nickname could not be moderated due to permissions
       }
     } catch (err) {
@@ -122,16 +123,16 @@ async function moderateNickname(member) {
 }
 
 /**
- * AUTOMATION FUNCTION: Checks all nicknames in the guild repeatedly.
+ * RECURRING FUNCTION: Checks all nicknames in the guild repeatedly.
  */
 async function runAutomatedNicknameScan(guild) {
     if (!guild) return; // Safety check
     
-    console.log('Running automated nickname scan...');
+    //console.log('Running automated nickname scan...'); // Suppress constant logging for frequent task
     let moderatedCount = 0;
     
     try {
-        // Fetches all members for the most current data
+        // Fetches all members for the most current data (can be slow on very large servers)
         const members = await guild.members.fetch(); 
         
         for (const [id, member] of members) {
@@ -145,6 +146,7 @@ async function runAutomatedNicknameScan(guild) {
         
         if (moderatedCount > 0) {
             const log = guild.channels.cache.get(LOG_CHANNEL_ID);
+            // Only log if something was moderated
             if (log) log.send(`✅ **Recurring Scan Complete:** Checked ${members.size} members. Moderated **${moderatedCount}** inappropriate names.`);
         }
         
@@ -157,7 +159,7 @@ async function runAutomatedNicknameScan(guild) {
  * Starts the recurring nickname scan.
  */
 function startAutomatedNicknameScan(guild) {
-    // Run once immediately, then every NICKNAME_SCAN_INTERVAL
+    // Run once immediately, then every NICKNAME_SCAN_INTERVAL (5 seconds)
     runAutomatedNicknameScan(guild); 
     
     setInterval(() => {
@@ -177,14 +179,14 @@ client.once('ready', async () => {
     status: 'online'
   });
 
-  // START RECURRING NICKNAME CHECK
-  const guild = client.guilds.cache.get(GUILD_ID);
-  if (guild) {
-      startAutomatedNicknameScan(guild); 
-  }
+  // START RECURRING NICKNAME CHECK (Runs every 5 seconds)
+  const guild = client.guilds.cache.get(GUILD_ID);
+  if (guild) {
+      startAutomatedNicknameScan(guild); 
+  }
 
 
-  // Register slash commands (removed checknames)
+  // Register slash commands (removed checknames)
   const commands = [
     new SlashCommandBuilder()
       .setName('say')
@@ -313,13 +315,6 @@ client.on('interactionCreate', async (interaction) => {
 
   // Button interactions (tickets + thread buttons)
   if (interaction.isButton()) {
-    // ... (Ticket button interaction logic remains the same) ...
-    // Note: The structure of Discord's permission system is crucial for tickets.
-    // 
-
-[Image of Discord Role Hierarchy Diagram]
-
-
     if (interaction.customId === 'create_ticket') {
       await interaction.deferReply({ ephemeral: true });
 
@@ -483,10 +478,10 @@ client.on('messageCreate', async (message) => {
   const lowerContent = content.toLowerCase();
   const member = message.member;
 
-  // RULE: INAPPROPRIATE RP LOCKDOWN 
+  // RULE: INAPPROPRIATE RP LOCKDOWN 
   if (message.channel.id === RP_CHANNEL_ID && containsBadWord(lowerContent)) {
       const category = message.guild.channels.cache.get(RP_CATEGORY_ID);
-      if (category && category.type === 4) { 
+      if (category && category.type === 4) { 
           try {
               const everyoneRole = message.guild.roles.cache.find(r => r.name === '@everyone');
               if (everyoneRole) {
@@ -495,177 +490,181 @@ client.on('messageCreate', async (message) => {
               await message.delete().catch(() => {});
               const log = client.channels.cache.get(LOG_CHANNEL_ID);
               if (log) log.send(`🔒 **RP Category Lockdown**\nCategory <#${RP_CATEGORY_ID}> locked down due to suspicious/inappropriate RP attempt by <@${message.author.id}> in <#${RP_CHANNEL_ID}>.\nMessage: ||${message.content}||`);
-              return; 
+              return; 
           } catch (e) {
               console.error("Failed to lock RP category:", e);
               message.channel.send(`⚠️ WARNING: Inappropriate content detected in <#${RP_CHANNEL_ID}>. Category lockdown failed. Manually review <@${message.author.id}>.`);
           }
       }
   }
-  
-  // RULE: REPETITIVE CHARACTER SPAM (15+ characters)
-  const repetitiveRegex = /(.)\1{14,}/; 
-  if (repetitiveRegex.test(content)) {
-      await message.delete().catch(() => {});
-      try {
-          const warning = await message.channel.send(`Woah, sorry <@${message.author.id}>, but your message has been deleted because it contained more than 15 repetitive characters.`);
-          setTimeout(() => warning.delete().catch(() => {}), 5000); 
-      } catch (e) {
-          console.error("Failed to send/delete spam warning:", e);
-      }
-      return;
-  }
-  
-  // RULE: STRICT PERSONAL INFORMATION FILTER (NEW)
-  const personalInfoRegex = /(\d{3}[-.\s]?\d{3}[-.\s]?\d{4})|(\b\d{4}[-.\s]?\d{4}[-.\s]?\d{4}[-.\s]?\d{4}\b)|(\b\d{16}\b)|(\b\d{9}\b)|(\b[a-zA-Z0-9._%+-]+@[a-zA-Z0-9.-]+\.[a-zA-Z]{2,}\b)/;
-  if (personalInfoRegex.test(content)) {
-      await message.delete().catch(() => {});
-      const log = client.channels.cache.get(LOG_CHANNEL_ID);
-      if (log) log.send(`🔒 **Personal Info Filter**\nUser: <@${message.author.id}>\nChannel: <#${message.channel.id}>\nReason: Attempted to post sensitive PII (Phone/Card/Email/SSN pattern).`);
-      return;
-  }
-  
-  // RULE: ANTI-HARASSMENT / ANTI-TROLLING (MUTE) (NEW)
-  const explicitTrollHarassRegex = /(^|\s)(mute|ban|harass|troll|bullying)\s+(that|him|her|them)\s+(\S+|$)|(you\s+(are|re)\s+(a|an)?\s+(troll|bully|harasser))/i;
+  
+  // RULE: REPETITIVE CHARACTER SPAM (15+ characters)
+  const repetitiveRegex = /(.)\1{14,}/; 
+  if (repetitiveRegex.test(content)) {
+      await message.delete().catch(() => {});
+      try {
+          const warning = await message.channel.send(`Woah, sorry <@${message.author.id}>, but your message has been deleted because it contained more than 15 repetitive characters.`);
+          setTimeout(() => warning.delete().catch(() => {}), 5000); 
+      } catch (e) {
+          console.error("Failed to send/delete spam warning:", e);
+      }
+      return;
+  }
+  
+  // RULE: STRICT PERSONAL INFORMATION FILTER (NEW)
+  const personalInfoRegex = /(\d{3}[-.\s]?\d{3}[-.\s]?\d{4})|(\b\d{4}[-.\s]?\d{4}[-.\s]?\d{4}[-.\s]?\d{4}\b)|(\b\d{16}\b)|(\b\d{9}\b)|(\b[a-zA-Z0-9._%+-]+@[a-zA-Z0-9.-]+\.[a-zA-Z]{2,}\b)/;
+  if (personalInfoRegex.test(content)) {
+      await message.delete().catch(() => {});
+      const log = client.channels.cache.get(LOG_CHANNEL_ID);
+      if (log) log.send(`🔒 **Personal Info Filter**\nUser: <@${message.author.id}>\nChannel: <#${message.channel.id}>\nReason: Attempted to post sensitive PII (Phone/Card/Email/SSN pattern).`);
+      return;
+  }
+  
+  // RULE: ANTI-HARASSMENT / ANTI-TROLLING (MUTE) (NEW)
+  // This mutes the user for explicit trolling/harassment directed at others.
+  const explicitTrollHarassRegex = /(^|\s)(mute|ban|harass|troll|bullying)\s+(that|him|her|them)\s+(\S+|$)|(you\s+(are|re)\s+(a|an)?\s+(troll|bully|harasser))/i;
 
-  if (explicitTrollHarassRegex.test(lowerContent)) {
-      await message.delete().catch(() => {});
+  if (explicitTrollHarassRegex.test(lowerContent)) {
+      await message.delete().catch(() => {});
 
-      const muteRole = message.guild.roles.cache.get(MUTE_ROLE_ID);
-      if (member && muteRole && member.manageable) {
-          try {
-              // Mute for 60 minutes
-              await member.timeout(60 * 60 * 1000, "Trolling/Harassment detected"); 
-              
-              const log = client.channels.cache.get(LOG_CHANNEL_ID);
-              if (log) log.send(`🛑 **Harassment/Trolling Mute**\nUser: <@${message.author.id}> timed out for 60m.\nContent: ||${message.content}||\nReason: Detected explicit command or statement of harassment/trolling/bullying.`);
-              
-          } catch (e) {
-              console.error("Failed to mute/log troll:", e);
-          }
-      }
-      return;
-  }
-  
-  // RULE: SELECTIVE ADVERTISING (NEW)
-  const externalAdRegex = /(subscribe to my|go check out my|new video on|follow my insta|patreon|onlyfans|youtube\b|twitch\b|facebook\b|tiktok\b)/i;
-  const allowedAds = /(stormy and hops|stormy & hops)/i;
-  
-  if (externalAdRegex.test(lowerContent) && !allowedAds.test(lowerContent)) {
-      await message.delete().catch(() => {});
-      const log = client.channels.cache.get(LOG_CHANNEL_ID);
-      if (log) log.send(`📢 **Advertising Deleted**\nUser: <@${message.author.id}>\nContent: ||${message.content}||\nReason: External promotion/subscription attempt.`);
-      return;
-  }
-  
-  // RULE: POLITICAL CONTENT SOFT FILTER (NEW)
-  const politicalKeywords = ['politics', 'government', 'election', 'congress', 'biden', 'trump', 'conservative', 'liberal', 'democracy', 'republican', 'democrat'];
-  let politicalCount = 0;
-  for (const keyword of politicalKeywords) {
-      if (lowerContent.includes(keyword)) {
-          politicalCount++;
-      }
-  }
+      const muteRole = message.guild.roles.cache.get(MUTE_ROLE_ID);
+      if (member && muteRole && member.manageable) {
+          try {
+              // Mute for 60 minutes
+              await member.timeout(60 * 60 * 1000, "Trolling/Harassment detected"); 
+              
+              const log = client.channels.cache.get(LOG_CHANNEL_ID);
+              if (log) log.send(`🛑 **Harassment/Trolling Mute**\nUser: <@${message.author.id}> timed out for 60m.\nContent: ||${message.content}||\nReason: Detected explicit command or statement of harassment/trolling/bullying.`);
+              
+          } catch (e) {
+              console.error("Failed to mute/log troll:", e);
+          }
+      }
+      return;
+  }
+  
+  // RULE: SELECTIVE ADVERTISING (NEW)
+  const externalAdRegex = /(subscribe to my|go check out my|new video on|follow my insta|patreon|onlyfans|youtube\b|twitch\b|facebook\b|tiktok\b)/i;
+  const allowedAds = /(stormy and hops|stormy & hops)/i;
+  
+  if (externalAdRegex.test(lowerContent) && !allowedAds.test(lowerContent)) {
+      await message.delete().catch(() => {});
+      const log = client.channels.cache.get(LOG_CHANNEL_ID);
+      if (log) log.send(`📢 **Advertising Deleted**\nUser: <@${message.author.id}>\nContent: ||${message.content}||\nReason: External promotion/subscription attempt.`);
+      return;
+  }
+  
+  // RULE: POLITICAL CONTENT SOFT FILTER (NEW)
+  // If political keyword count >= 4, it's considered "too much."
+  const politicalKeywords = ['politics', 'government', 'election', 'congress', 'biden', 'trump', 'conservative', 'liberal', 'democracy', 'republican', 'democrat'];
+  let politicalCount = 0;
+  for (const keyword of politicalKeywords) {
+      if (lowerContent.includes(keyword)) {
+          politicalCount++;
+      }
+  }
 
-  if (politicalCount >= 4) {
-      await message.delete().catch(() => {});
-      const log = client.channels.cache.get(LOG_CHANNEL_ID);
-      if (log) log.send(`🗳️ **Political Content Filter**\nUser: <@${message.author.id}>\nContent: ||${message.content}||\nReason: Excessive political content (Count: ${politicalCount}).`);
-      return;
-  }
+  if (politicalCount >= 4) {
+      await message.delete().catch(() => {});
+      const log = client.channels.cache.get(LOG_CHANNEL_ID);
+      if (log) log.send(`🗳️ **Political Content Filter**\nUser: <@${message.author.id}>\nContent: ||${message.content}||\nReason: Excessive political content (Count: ${politicalCount}).`);
+      return;
+  }
 
 
-  // RULE 7: UNDERAGE CHECK
-  const underageRegex = /\b(i|i'm|im)\s+(am\s+)?(under\s+13|1[0-2]|[1-9])\b/i;
-  if (underageRegex.test(lowerContent)) {
-    await message.delete().catch(() => {});
-    const log = client.channels.cache.get(LOG_CHANNEL_ID);
-    if (log) log.send(`👶 **Underage Admission Detected**\nUser: <@${message.author.id}>\nContent: ||${message.content}||\nAction: Deleted immediately.`);
-    return;
-  }
+  // RULE 7: UNDERAGE CHECK
+  const underageRegex = /\b(i|i'm|im)\s+(am\s+)?(under\s+13|1[0-2]|[1-9])\b/i;
+  if (underageRegex.test(lowerContent)) {
+    await message.delete().catch(() => {});
+    const log = client.channels.cache.get(LOG_CHANNEL_ID);
+    if (log) log.send(`👶 **Underage Admission Detected**\nUser: <@${message.author.id}>\nContent: ||${message.content}||\nAction: Deleted immediately.`);
+    return;
+  }
 
-  // RULE 5: INAPPROPRIATE USERNAME CHECK (on message send - immediate check for the user sending the message)
-  if (member) {
-    await moderateNickname(member);
-  }
+  // RULE 5: INAPPROPRIATE USERNAME CHECK (on message send)
+  // This ensures that if a user changes their name *between* the 5-second scans and sends a message, 
+  // the bad name is caught immediately.
+  if (member) {
+    await moderateNickname(member);
+  }
 
-  // RULE 1: Be Respectful / Strict Bad Word Filter / Racial Slurs / Bypass Detection
-  if (containsBadWord(lowerContent)) {
-    await message.delete().catch(() => {});
-    
-    try {
-      // 30 minute timeout for violation
-      if (member) await member.timeout(30 * 60 * 1000, "Bad Word / Slur / Harassment Joke").catch(() => {});
-      
-      const log = client.channels.cache.get(LOG_CHANNEL_ID);
-      if (log) log.send(`🚨 **Filter Violation**\nUser: <@${message.author.id}>\nContent: ||${message.content}||`);
-    } catch {}
-    return;
-  }
+  // RULE 1: Be Respectful / Strict Bad Word Filter / Racial Slurs / Bypass Detection (Catching harassment jokes)
+  if (containsBadWord(lowerContent)) {
+    await message.delete().catch(() => {});
+    
+    try {
+      // 30 minute timeout for violation
+      if (member) await member.timeout(30 * 60 * 1000, "Bad Word / Slur / Harassment Joke").catch(() => {});
+      
+      const log = client.channels.cache.get(LOG_CHANNEL_ID);
+      if (log) log.send(`🚨 **Filter Violation**\nUser: <@${message.author.id}>\nContent: ||${message.content}||`);
+    } catch {}
+    return;
+  }
 
-  // RULE 4 & 6: Advertising / Scam / Links
-  const isAdOrScam = 
-    lowerContent.includes('discord.gg/') || 
-    lowerContent.includes('free nitro') ||
-    lowerContent.includes('steam gift') ||
-    lowerContent.includes('crypto') ||
-    lowerContent.includes('bitcoin');
+  // RULE 4 & 6: Advertising / Scam / Links
+  const isAdOrScam = 
+    lowerContent.includes('discord.gg/') || 
+    lowerContent.includes('free nitro') ||
+    lowerContent.includes('steam gift') ||
+    lowerContent.includes('crypto') ||
+    lowerContent.includes('bitcoin');
 
-  if (isAdOrScam) {
-    await message.delete().catch(() => {});
-    return;
-  }
+  if (isAdOrScam) {
+    await message.delete().catch(() => {});
+    return;
+  }
 
-  // RULE 10: No Doxing (Basic IP detection)
-  const ipRegex = /\b\d{1,3}\.\d{1,3}\.\d{1,3}\.\d{1,3}\b/;
-  if (ipRegex.test(lowerContent)) {
-    await message.delete().catch(() => {});
-    const log = client.channels.cache.get(LOG_CHANNEL_ID);
-    if (log) log.send(`⚠️ **Possible Dox Attempt**\nUser: <@${message.author.id}>\nContent: ||${message.content}||`);
-    return;
-  }
+  // RULE 10: No Doxing (Basic IP detection)
+  const ipRegex = /\b\d{1,3}\.\d{1,3}\.\d{1,3}\.\d{1,3}\b/;
+  if (ipRegex.test(lowerContent)) {
+    await message.delete().catch(() => {});
+    const log = client.channels.cache.get(LOG_CHANNEL_ID);
+    if (log) log.send(`⚠️ **Possible Dox Attempt**\nUser: <@${message.author.id}>\nContent: ||${message.content}||`);
+    return;
+  }
 
-  // IMAGE ONLY CHANNEL THREAD SYSTEM (existing)
-  if (message.channel.id === TARGET_CHANNEL_ID) {
-    const hasImage = message.attachments.some(att =>
-      att.contentType?.startsWith('image/') ||
-      att.name?.match(/\.(jpg|jpeg|png|gif)$/i)
-    );
+  // IMAGE ONLY CHANNEL THREAD SYSTEM (existing)
+  if (message.channel.id === TARGET_CHANNEL_ID) {
+    const hasImage = message.attachments.some(att =>
+      att.contentType?.startsWith('image/') ||
+      att.name?.match(/\.(jpg|jpeg|png|gif)$/i)
+    );
 
-    if (!hasImage) {
-      await message.delete().catch(() => {});
-      return;
-    }
+    if (!hasImage) {
+      await message.delete().catch(() => {});
+      return;
+    }
 
-    try { await message.react('✨'); } catch {}
+    try { await message.react('✨'); } catch {}
 
-    let thread;
-    try {
-      thread = await message.startThread({
-        name: `Thread: ${message.author.username}`,
-        autoArchiveDuration: 60,
-        reason: 'Automatic'
-      });
-    } catch { return; }
+    let thread;
+    try {
+      thread = await message.startThread({
+        name: `Thread: ${message.author.username}`,
+        autoArchiveDuration: 60,
+        reason: 'Automatic'
+      });
+    } catch { return; }
 
-    try {
-      const row = new ActionRowBuilder().addComponents(
-        new ButtonBuilder().setCustomId('archive_thread').setLabel('Archive Thread').setStyle(ButtonStyle.Danger),
-        new ButtonBuilder().setCustomId('edit_title').setLabel('Edit Title').setStyle(ButtonStyle.Primary)
-      );
-      await thread.send({ content: "Thread controls:", components: [row] });
-    } catch { }
-  }
+    try {
+      const row = new ActionRowBuilder().addComponents(
+        new ButtonBuilder().setCustomId('archive_thread').setLabel('Archive Thread').setStyle(ButtonStyle.Danger),
+        new ButtonBuilder().setCustomId('edit_title').setLabel('Edit Title').setStyle(ButtonStyle.Primary)
+      );
+      await thread.send({ content: "Thread controls:", components: [row] });
+    } catch { }
+  }
 });
 
 // ================= RULE 11: JOIN/LEAVE TROLLING =================
 client.on('guildMemberAdd', async (member) => {
-  // RULE 5: Check Nickname on Join (immediate)
+  // RULE 5: Check Nickname on Join
   await moderateNickname(member);
 
   const userId = member.id;
   const now = Date.now();
-  
+  
   // Get existing data
   const userData = joinTracker.get(userId) || { count: 0, lastJoin: 0 };
 
@@ -706,7 +705,7 @@ client.on('interactionCreate', async (interaction) => {
     if (!thread || !thread.isThread()) {
       return interaction.reply({ content: "Use inside a thread", ephemeral: true });
     }
-    
+    
     // Check if the user is the thread starter or a moderator
     const isThreadStarter = thread.ownerId === interaction.user.id;
     const isMod = interaction.member.permissions.has(PermissionsBitField.Flags.ManageMessages);
