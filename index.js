@@ -34,7 +34,7 @@ and for more assistance please use
 https://discord.com/channels/1369477266958192720/1414352972304879626
 channel to create a more helpful environment to tell a mod`;
 
-// ================= STRICT FILTER CONFIG (UPDATED) =================
+// ================= STRICT FILTER CONFIG =================
 // Comprehensive list of bad words, slurs, and bypass attempts (Added "sexy" and common wildcards)
 const BAD_WORDS = [
   "fuck", "f*ck", "f**k", "shit", "s*it", "s**t", "ass", "bitch", "hoe", "whore", "slut", "cunt", 
@@ -43,7 +43,7 @@ const BAD_WORDS = [
   "retard", "spastic", "mong", "autist",
   "kys", "kill yourself", "suicide", "rape", "molest",
   "hitler", "nazi", "kkk",
-  "sexy" // <--- ADDED
+  "sexy"
 ];
 
 // Map for detecting Leetspeak bypasses (e.g. h0e -> hoe)
@@ -81,38 +81,39 @@ function containsBadWord(text) {
   
   const lower = text.toLowerCase();
   
-  // 1. Direct check (covers "f*ck" and "sexy" now)
+  // 1. Direct check
   if (BAD_WORDS.some(word => lower.includes(word))) return true;
 
-  // 2. Normalize (Remove spaces, symbols, convert leetspeak) to catch complex bypasses
+  // 2. Normalize (Remove spaces, symbols, convert leetspeak)
   let normalized = lower.split('').map(char => LEET_MAP[char] || char).join('');
   normalized = normalized.replace(/[^a-z]/g, ''); // Remove non-letters
 
   // Check normalized string against bad words
-  // This catches leetspeak like '4ss' or 'h0e'
   return BAD_WORDS.some(word => normalized.includes(word));
 }
 
-// Helper: Moderate Nickname (FIXED/RETAINED for functionality)
+// Helper: Moderate Nickname 
 async function moderateNickname(member) {
   // Check display name (which is nickname if set, or username if not)
   if (containsBadWord(member.displayName)) {
     try {
-      // **This check ensures the bot has the proper role hierarchy (manageable) before attempting rename**
+      // **Bot must have a higher role than the user's highest role for this to work**
       if (member.manageable) {
         await member.setNickname("[moderated nickname by hopper]");
         
-        // Optional: Notify log
         const log = member.guild.channels.cache.get(LOG_CHANNEL_ID);
         if (log) log.send(`🛡️ **Nickname Moderated**\nUser: <@${member.id}>\nOld Name: ||${member.user.username}||\nReason: Inappropriate Username`);
+        return true; // Nickname was moderated
       } else {
-         // Log the failure to help debugging permissions
          console.log(`Failed to moderate nickname for ${member.user.tag}: Bot role is lower than user's highest role.`);
+         return false; // Nickname could not be moderated due to permissions
       }
     } catch (err) {
       console.error(`Failed to moderate nickname for ${member.user.tag}:`, err);
+      return false;
     }
   }
+  return false; // No moderation needed
 }
 
 // ================= READY =================
@@ -124,7 +125,7 @@ client.once('ready', async () => {
     status: 'online'
   });
 
-  // Register slash commands (say/help/serverinfo/kick/ban/unban/timeout/setup)
+  // Register slash commands (say/help/serverinfo/kick/ban/unban/timeout/setup/checknames)
   const commands = [
     new SlashCommandBuilder()
       .setName('say')
@@ -157,7 +158,13 @@ client.once('ready', async () => {
 
     new SlashCommandBuilder()
       .setName('setup')
-      .setDescription('Post the ticket creation message in the tickets channel')
+      .setDescription('Post the ticket creation message in the tickets channel'),
+      
+    // NEW: Command to check all names
+    new SlashCommandBuilder()
+      .setName('checknames')
+      .setDescription('Moderator only: Check all nicknames in the server and fix inappropriate ones.')
+      
   ].map(c => c.toJSON());
 
   const rest = new REST({ version: '10' }).setToken(process.env.TOKEN);
@@ -170,10 +177,43 @@ client.once('ready', async () => {
   }
 });
 
-// ================= SLASH COMMANDS =================
+// ================= SLASH COMMANDS (UPDATED) =================
 client.on('interactionCreate', async (interaction) => {
   if (interaction.isChatInputCommand()) {
     const isMod = interaction.member.permissions.has(PermissionsBitField.Flags.ModerateMembers) || interaction.member.permissions.has(PermissionsBitField.Flags.ManageMessages);
+
+    // --- MOD ONLY COMMANDS CHECK ---
+    if (['kick','ban','unban','timeout','setup', 'checknames'].includes(interaction.commandName) && !isMod) {
+      return interaction.reply({ content: '❌ Mods only', ephemeral: true });
+    }
+    
+    // --- COMMAND LOGIC ---
+
+    if (interaction.commandName === 'checknames') {
+        await interaction.deferReply({ ephemeral: true });
+        let moderatedCount = 0;
+
+        try {
+            // Force fetch all members to ensure we check everyone
+            const members = await interaction.guild.members.fetch(); 
+
+            for (const [id, member] of members) {
+                if (member.user.bot) continue; // Skip bots
+                
+                // We use the same helper function for bulk checking
+                if (await moderateNickname(member)) {
+                    moderatedCount++;
+                }
+            }
+
+            return interaction.editReply({ content: `✅ Scan complete! Moderated **${moderatedCount}** inappropriate names. Check the log channel for details.`, ephemeral: true });
+
+        } catch (error) {
+            console.error('Checknames command failed:', error);
+            return interaction.editReply({ content: '❌ Failed to run mass check. Check bot permissions.', ephemeral: true });
+        }
+    }
+
 
     if (interaction.commandName === 'say') {
       const text = interaction.options.getString('text');
@@ -194,10 +234,6 @@ client.on('interactionCreate', async (interaction) => {
           `**Server Name:** ${guild.name}\n**Members:** ${guild.memberCount}\n**Created:** ${guild.createdAt.toDateString()}`,
         ephemeral: true
       });
-    }
-
-    if (['kick','ban','unban','timeout','setup'].includes(interaction.commandName) && !isMod) {
-      return interaction.reply({ content: '❌ Mods only', ephemeral: true });
     }
 
     if (interaction.commandName === 'kick') {
@@ -411,7 +447,7 @@ client.on('messageCreate', async (message) => {
   const content = (message.content || '').toLowerCase();
   const member = message.member;
 
-  // RULE: INAPPROPRIATE RP LOCKDOWN (NEW)
+  // RULE: INAPPROPRIATE RP LOCKDOWN 
   // If a bad word/bypass is detected in the specific RP channel, lock the category immediately.
   if (message.channel.id === RP_CHANNEL_ID && containsBadWord(content)) {
       // Action: Shut down the category
@@ -427,7 +463,7 @@ client.on('messageCreate', async (message) => {
               await message.delete().catch(() => {});
               const log = client.channels.cache.get(LOG_CHANNEL_ID);
               if (log) log.send(`🔒 **RP Category Lockdown**\nCategory <#${RP_CATEGORY_ID}> locked down due to suspicious/inappropriate RP attempt by <@${message.author.id}> in <#${RP_CHANNEL_ID}>.\nMessage: ||${message.content}||`);
-              return; // Exit here; lockdown is the primary, strongest action.
+              return; 
           } catch (e) {
               console.error("Failed to lock RP category:", e);
               // Send a warning in the channel if lockdown fails
@@ -446,7 +482,7 @@ client.on('messageCreate', async (message) => {
     return;
   }
 
-  // RULE 5: INAPPROPRIATE USERNAME CHECK
+  // RULE 5: INAPPROPRIATE USERNAME CHECK (on message send)
   if (member) {
     await moderateNickname(member);
   }
@@ -560,12 +596,11 @@ client.on('guildMemberAdd', async (member) => {
   }
 });
 
-// ================= THREAD BUTTONS (FIXED) =================
+// ================= THREAD BUTTONS =================
 client.on('interactionCreate', async (interaction) => {
   if (!interaction.isButton()) return;
 
   if (interaction.customId === 'archive_thread' || interaction.customId === 'edit_title') {
-    // interaction.channel will correctly refer to the thread if the button was clicked inside it
     const thread = interaction.channel;
     if (!thread || !thread.isThread()) {
       return interaction.reply({ content: "Use inside a thread", ephemeral: true });
