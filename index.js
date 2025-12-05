@@ -29,6 +29,9 @@ const MUTE_ROLE_ID = '1446530920650899536';           // Placeholder: **REPLACE 
 const RP_CHANNEL_ID = '1421219064985948346';
 const RP_CATEGORY_ID = '1446530920650899536';
 
+// NICKNAME SCAN INTERVAL (15 seconds)
+const NICKNAME_SCAN_INTERVAL = 15 * 1000;
+
 const HELP_MESSAGE = `hello! Do you need help?
 Please go to https://discord.com/channels/1369477266958192720/1414304297122009099
 and for more assistance please use
@@ -108,7 +111,6 @@ async function moderateNickname(member) {
         if (log) log.send(`🛡️ **Nickname Moderated**\nUser: <@${member.id}>\nOld Name: ||${member.user.username}||\nReason: Inappropriate Username`);
         return true; // Nickname was moderated
       } else {
-         console.log(`Failed to moderate nickname for ${member.user.tag}: Bot role is lower than user's highest role.`);
          return false; // Nickname could not be moderated due to permissions
       }
     } catch (err) {
@@ -120,31 +122,49 @@ async function moderateNickname(member) {
 }
 
 /**
- * NEW AUTOMATION FUNCTION: Checks all nicknames in the guild.
- * This runs when the bot is ready to cover all existing members.
+ * AUTOMATION FUNCTION: Checks all nicknames in the guild repeatedly.
  */
-async function runInitialNicknameScan(guild) {
-    console.log('Starting automated initial nickname scan...');
+async function runAutomatedNicknameScan(guild) {
+    if (!guild) return; // Safety check
+    
+    console.log('Running automated nickname scan...');
     let moderatedCount = 0;
     
     try {
-        const members = await guild.members.fetch();
+        // Fetches all members for the most current data
+        const members = await guild.members.fetch(); 
         
         for (const [id, member] of members) {
             if (member.user.bot) continue;
             
+            // Checks if name contains a bad word and attempts to moderate
             if (await moderateNickname(member)) {
                 moderatedCount++;
             }
         }
         
-        const log = guild.channels.cache.get(LOG_CHANNEL_ID);
-        if (log) log.send(`✅ **Automated Nickname Scan Complete:** Checked ${members.size} members. Moderated **${moderatedCount}** inappropriate names.`);
-        console.log(`Automated nickname scan complete. Moderated: ${moderatedCount}`);
+        if (moderatedCount > 0) {
+            const log = guild.channels.cache.get(LOG_CHANNEL_ID);
+            if (log) log.send(`✅ **Recurring Scan Complete:** Checked ${members.size} members. Moderated **${moderatedCount}** inappropriate names.`);
+        }
         
     } catch (error) {
         console.error('Automated Nickname Scan failed:', error);
     }
+}
+
+/**
+ * Starts the recurring nickname scan.
+ */
+function startAutomatedNicknameScan(guild) {
+    // Run once immediately, then every NICKNAME_SCAN_INTERVAL
+    runAutomatedNicknameScan(guild); 
+    
+    setInterval(() => {
+        runAutomatedNicknameScan(guild);
+    }, NICKNAME_SCAN_INTERVAL);
+
+    console.log(`Automated nickname scan started, running every ${NICKNAME_SCAN_INTERVAL / 1000} seconds.`);
 }
 
 
@@ -157,11 +177,10 @@ client.once('ready', async () => {
     status: 'online'
   });
 
-  // AUTOMATED NICKNAME CHECK ON STARTUP
+  // START RECURRING NICKNAME CHECK
   const guild = client.guilds.cache.get(GUILD_ID);
   if (guild) {
-      // Run the full scan once when the bot starts/reconnects
-      runInitialNicknameScan(guild); 
+      startAutomatedNicknameScan(guild); 
   }
 
 
@@ -212,21 +231,17 @@ client.once('ready', async () => {
   }
 });
 
-// ================= SLASH COMMANDS (MODIFIED) =================
+// ================= SLASH COMMANDS =================
 client.on('interactionCreate', async (interaction) => {
   if (interaction.isChatInputCommand()) {
     const isMod = interaction.member.permissions.has(PermissionsBitField.Flags.ModerateMembers) || interaction.member.permissions.has(PermissionsBitField.Flags.ManageMessages);
 
     // --- MOD ONLY COMMANDS CHECK ---
-    // NOTE: The 'checknames' command is removed since it's now automated on startup.
     if (['kick','ban','unban','timeout','setup'].includes(interaction.commandName) && !isMod) {
       return interaction.reply({ content: '❌ Mods only', ephemeral: true });
     }
     
     // --- COMMAND LOGIC ---
-
-    // Removed the 'checknames' command logic here.
-
 
     if (interaction.commandName === 'say') {
       const text = interaction.options.getString('text');
@@ -299,6 +314,11 @@ client.on('interactionCreate', async (interaction) => {
   // Button interactions (tickets + thread buttons)
   if (interaction.isButton()) {
     // ... (Ticket button interaction logic remains the same) ...
+    // Note: The structure of Discord's permission system is crucial for tickets.
+    // 
+
+[Image of Discord Role Hierarchy Diagram]
+
 
     if (interaction.customId === 'create_ticket') {
       await interaction.deferReply({ ephemeral: true });
@@ -506,7 +526,6 @@ client.on('messageCreate', async (message) => {
   }
   
   // RULE: ANTI-HARASSMENT / ANTI-TROLLING (MUTE) (NEW)
-  // This mutes the user for explicit trolling/harassment directed at others.
   const explicitTrollHarassRegex = /(^|\s)(mute|ban|harass|troll|bullying)\s+(that|him|her|them)\s+(\S+|$)|(you\s+(are|re)\s+(a|an)?\s+(troll|bully|harasser))/i;
 
   if (explicitTrollHarassRegex.test(lowerContent)) {
@@ -540,7 +559,6 @@ client.on('messageCreate', async (message) => {
   }
   
   // RULE: POLITICAL CONTENT SOFT FILTER (NEW)
-  // If political keyword count >= 4, it's considered "too much."
   const politicalKeywords = ['politics', 'government', 'election', 'congress', 'biden', 'trump', 'conservative', 'liberal', 'democracy', 'republican', 'democrat'];
   let politicalCount = 0;
   for (const keyword of politicalKeywords) {
@@ -566,12 +584,12 @@ client.on('messageCreate', async (message) => {
     return;
   }
 
-  // RULE 5: INAPPROPRIATE USERNAME CHECK (on message send)
+  // RULE 5: INAPPROPRIATE USERNAME CHECK (on message send - immediate check for the user sending the message)
   if (member) {
     await moderateNickname(member);
   }
 
-  // RULE 1: Be Respectful / Strict Bad Word Filter / Racial Slurs / Bypass Detection (Catching harassment jokes)
+  // RULE 1: Be Respectful / Strict Bad Word Filter / Racial Slurs / Bypass Detection
   if (containsBadWord(lowerContent)) {
     await message.delete().catch(() => {});
     
@@ -642,7 +660,7 @@ client.on('messageCreate', async (message) => {
 
 // ================= RULE 11: JOIN/LEAVE TROLLING =================
 client.on('guildMemberAdd', async (member) => {
-  // RULE 5: Check Nickname on Join
+  // RULE 5: Check Nickname on Join (immediate)
   await moderateNickname(member);
 
   const userId = member.id;
