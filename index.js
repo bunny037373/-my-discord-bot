@@ -24,20 +24,26 @@ const LOG_CHANNEL_ID = '1414286807360602112';          // existing log channel
 const TRANSCRIPT_CHANNEL_ID = '1414354204079689849';   // transcript channel for closed tickets
 const SETUP_POST_CHANNEL = '1445628128423579660';      // where /setup posts the Create Ticket message
 
+// NEW RP CONFIGURATION
+const RP_CHANNEL_ID = '1421219064985948346';
+const RP_CATEGORY_ID = '1446530920650899536';
+
 const HELP_MESSAGE = `hello! Do you need help?
 Please go to https://discord.com/channels/1369477266958192720/1414304297122009099
 and for more assistance please use
 https://discord.com/channels/1369477266958192720/1414352972304879626
 channel to create a more helpful environment to tell a mod`;
 
-// ================= STRICT FILTER CONFIG =================
-// Comprehensive list of bad words, slurs, and bypass attempts
+// ================= STRICT FILTER CONFIG (UPDATED) =================
+// Comprehensive list of bad words, slurs, and bypass attempts (Added "sexy" and common wildcards)
 const BAD_WORDS = [
-  "fuck", "shit", "ass", "bitch", "hoe", "whore", "slut", "cunt", "dick", "pussy", "cock", "bastard",
-  "nigger", "nigga", "niga", "faggot", "fag", "dyke", "tranny", "chink", "kike", "paki", "gook", "spic", "beaner", "coon", // Racial/Homophobic Slurs
+  "fuck", "f*ck", "f**k", "shit", "s*it", "s**t", "ass", "bitch", "hoe", "whore", "slut", "cunt", 
+  "dick", "pussy", "cock", "bastard", 
+  "nigger", "nigga", "niga", "faggot", "fag", "dyke", "tranny", "chink", "kike", "paki", "gook", "spic", "beaner", "coon", 
   "retard", "spastic", "mong", "autist",
   "kys", "kill yourself", "suicide", "rape", "molest",
-  "hitler", "nazi", "kkk"
+  "hitler", "nazi", "kkk",
+  "sexy" // <--- ADDED
 ];
 
 // Map for detecting Leetspeak bypasses (e.g. h0e -> hoe)
@@ -73,31 +79,35 @@ function getModeratorRoles(guild) {
 function containsBadWord(text) {
   if (!text) return false;
   
-  // 1. Direct check
   const lower = text.toLowerCase();
+  
+  // 1. Direct check (covers "f*ck" and "sexy" now)
   if (BAD_WORDS.some(word => lower.includes(word))) return true;
 
-  // 2. Normalize (Remove spaces, symbols, convert leetspeak)
+  // 2. Normalize (Remove spaces, symbols, convert leetspeak) to catch complex bypasses
   let normalized = lower.split('').map(char => LEET_MAP[char] || char).join('');
   normalized = normalized.replace(/[^a-z]/g, ''); // Remove non-letters
 
   // Check normalized string against bad words
-  // logic: if the normalized string contains a bad word, it's a bypass attempt
+  // This catches leetspeak like '4ss' or 'h0e'
   return BAD_WORDS.some(word => normalized.includes(word));
 }
 
-// Helper: Moderate Nickname (NEW)
+// Helper: Moderate Nickname (FIXED/RETAINED for functionality)
 async function moderateNickname(member) {
   // Check display name (which is nickname if set, or username if not)
   if (containsBadWord(member.displayName)) {
     try {
-      // Permission check: Bot can't change owner or people with higher roles
+      // **This check ensures the bot has the proper role hierarchy (manageable) before attempting rename**
       if (member.manageable) {
         await member.setNickname("[moderated nickname by hopper]");
         
         // Optional: Notify log
         const log = member.guild.channels.cache.get(LOG_CHANNEL_ID);
         if (log) log.send(`🛡️ **Nickname Moderated**\nUser: <@${member.id}>\nOld Name: ||${member.user.username}||\nReason: Inappropriate Username`);
+      } else {
+         // Log the failure to help debugging permissions
+         console.log(`Failed to moderate nickname for ${member.user.tag}: Bot role is lower than user's highest role.`);
       }
     } catch (err) {
       console.error(`Failed to moderate nickname for ${member.user.tag}:`, err);
@@ -401,26 +411,47 @@ client.on('messageCreate', async (message) => {
   const content = (message.content || '').toLowerCase();
   const member = message.member;
 
-  // RULE 7: UNDERAGE CHECK (NEW)
-  // This matches "i'm X", "i am X", "im X" where X is 1-12 or "under 13"
+  // RULE: INAPPROPRIATE RP LOCKDOWN (NEW)
+  // If a bad word/bypass is detected in the specific RP channel, lock the category immediately.
+  if (message.channel.id === RP_CHANNEL_ID && containsBadWord(content)) {
+      // Action: Shut down the category
+      const category = message.guild.channels.cache.get(RP_CATEGORY_ID);
+      if (category && category.type === 4) { // Type 4 is Category
+          try {
+              const everyoneRole = message.guild.roles.cache.find(r => r.name === '@everyone');
+              if (everyoneRole) {
+                  await category.permissionOverwrites.edit(everyoneRole, {
+                      ViewChannel: false // Deny @everyone ViewChannel
+                  });
+              }
+              await message.delete().catch(() => {});
+              const log = client.channels.cache.get(LOG_CHANNEL_ID);
+              if (log) log.send(`🔒 **RP Category Lockdown**\nCategory <#${RP_CATEGORY_ID}> locked down due to suspicious/inappropriate RP attempt by <@${message.author.id}> in <#${RP_CHANNEL_ID}>.\nMessage: ||${message.content}||`);
+              return; // Exit here; lockdown is the primary, strongest action.
+          } catch (e) {
+              console.error("Failed to lock RP category:", e);
+              // Send a warning in the channel if lockdown fails
+              message.channel.send(`⚠️ WARNING: Inappropriate content detected in <#${RP_CHANNEL_ID}>. Category lockdown failed. Manually review <@${message.author.id}>.`);
+          }
+      }
+  }
+
+  // RULE 7: UNDERAGE CHECK
   const underageRegex = /\b(i|i'm|im)\s+(am\s+)?(under\s+13|1[0-2]|[1-9])\b/i;
   
   if (underageRegex.test(content)) {
-    // Ensure we don't catch "I am 100" by mistake, the regex checks boundary \b
     await message.delete().catch(() => {});
     const log = client.channels.cache.get(LOG_CHANNEL_ID);
     if (log) log.send(`👶 **Underage Admission Detected**\nUser: <@${message.author.id}>\nContent: ||${message.content}||\nAction: Deleted immediately.`);
     return;
   }
 
-  // RULE 5: INAPPROPRIATE USERNAME CHECK (NEW)
-  // If they talk and have a bad name, fix it immediately
+  // RULE 5: INAPPROPRIATE USERNAME CHECK
   if (member) {
     await moderateNickname(member);
   }
 
   // RULE 1: Be Respectful / Strict Bad Word Filter / Racial Slurs / Bypass Detection
-  // This uses the logic "can't tell the difference between bypassing and not bypassing"
   if (containsBadWord(content)) {
     await message.delete().catch(() => {});
     
@@ -449,7 +480,6 @@ client.on('messageCreate', async (message) => {
   }
 
   // RULE 10: No Doxing (Basic IP detection)
-  // Simple regex for IPv4 addresses
   const ipRegex = /\b\d{1,3}\.\d{1,3}\.\d{1,3}\.\d{1,3}\b/;
   if (ipRegex.test(content)) {
     await message.delete().catch(() => {});
@@ -493,7 +523,7 @@ client.on('messageCreate', async (message) => {
 
 // ================= RULE 11: JOIN/LEAVE TROLLING =================
 client.on('guildMemberAdd', async (member) => {
-  // RULE 5: Check Nickname on Join (NEW)
+  // RULE 5: Check Nickname on Join
   await moderateNickname(member);
 
   const userId = member.id;
@@ -530,14 +560,23 @@ client.on('guildMemberAdd', async (member) => {
   }
 });
 
-// ================= THREAD BUTTONS (existing) =================
+// ================= THREAD BUTTONS (FIXED) =================
 client.on('interactionCreate', async (interaction) => {
   if (!interaction.isButton()) return;
 
   if (interaction.customId === 'archive_thread' || interaction.customId === 'edit_title') {
+    // interaction.channel will correctly refer to the thread if the button was clicked inside it
     const thread = interaction.channel;
     if (!thread || !thread.isThread()) {
       return interaction.reply({ content: "Use inside a thread", ephemeral: true });
+    }
+    
+    // Check if the user is the thread starter or a moderator
+    const isThreadStarter = thread.ownerId === interaction.user.id;
+    const isMod = interaction.member.permissions.has(PermissionsBitField.Flags.ManageMessages);
+
+    if (!isThreadStarter && !isMod) {
+        return interaction.reply({ content: "❌ Only the thread creator or a moderator can use these controls.", ephemeral: true });
     }
 
     if (interaction.customId === 'archive_thread') {
@@ -547,12 +586,17 @@ client.on('interactionCreate', async (interaction) => {
 
     if (interaction.customId === 'edit_title') {
       await interaction.reply({ content: "Send new title. 30s.", ephemeral: true });
-      const filter = m => m.author.id === interaction.user.id;
+      const filter = m => m.author.id === interaction.user.id && m.channelId === thread.id;
       const collector = thread.createMessageCollector({ filter, time: 30000, max: 1 });
       collector.on('collect', async (msg) => {
-        await thread.setName(msg.content);
-        await msg.delete();
-        await interaction.followUp({ content: "✅ Title updated", ephemeral: true });
+        try {
+            await thread.setName(msg.content.slice(0, 100)); // Limit length
+            await msg.delete();
+            await interaction.followUp({ content: "✅ Title updated", ephemeral: true });
+        } catch (e) {
+            console.error("Failed to edit thread title:", e);
+            await interaction.followUp({ content: "❌ Failed to update title (Permissions or length)", ephemeral: true });
+        }
       });
     }
   }
