@@ -22,7 +22,7 @@ const TARGET_CHANNEL_ID = '1415134887232540764';
 const GUILD_ID = '1369477266958192720';
 const LOG_CHANNEL_ID = '1414286807360602112';          // existing log channel
 const TRANSCRIPT_CHANNEL_ID = '1414354204079689849';   // transcript channel for closed tickets
-const SETUP_POST_CHANNEL = '1414352972304879626';      // where /setup posts the Create Ticket message
+const SETUP_POST_CHANNEL = '1445628128423579660';      // where /setup posts the Create Ticket message
 const MUTE_ROLE_ID = '1446530920650899536';           // Placeholder: **REPLACE THIS WITH YOUR ACTUAL MUTE ROLE ID**
 
 // NEW RP CONFIGURATION
@@ -39,18 +39,25 @@ https://discord.com/channels/1369477266958192720/1414352972304879626
 channel to create a more helpful environment to tell a mod`;
 
 // ================= STRICT FILTER CONFIG =================
-// Comprehensive list of bad words, slurs, and bypass attempts (Includes Harassment Jokes/Trolling)
-const BAD_WORDS = [
+// 1. WORDS THAT TRIGGER MESSAGE DELETION ONLY (Common swearing)
+const MILD_BAD_WORDS = [
   "fuck", "f*ck", "f**k", "shit", "s*it", "s**t", "ass", "bitch", "hoe", "whore", "slut", "cunt", 
-  "dick", "pussy", "cock", "bastard", 
+  "dick", "pussy", "cock", "bastard", "sexy",
+];
+
+// 2. WORDS THAT TRIGGER A TIMEOUT (Slurs, threats, hate speech, extreme trolling)
+const SEVERE_WORDS = [
   "nigger", "nigga", "niga", "faggot", "fag", "dyke", "tranny", "chink", "kike", "paki", "gook", "spic", "beaner", "coon", 
   "retard", "spastic", "mong", "autist",
   "kys", "kill yourself", "suicide", "rape", "molest",
   "hitler", "nazi", "kkk",
-  "sexy",
-  // Added Harassment/Trolling joke terms
+  // Explicit Harassment/Trolling joke terms that we want to time out
   "joke about harassing", "troll joke", "harassment funny", "trolling funny", "trollin", "troller"
 ];
+
+// Combine both lists for the general filter used for nicknames and RP channel lockdown
+const BAD_WORDS = [...MILD_BAD_WORDS, ...SEVERE_WORDS];
+
 
 // Map for detecting Leetspeak bypasses (e.g. h0e -> hoe)
 const LEET_MAP = {
@@ -81,27 +88,33 @@ function getModeratorRoles(guild) {
   });
 }
 
-// Helper: Normalize text to catch bypasses
-function containsBadWord(text) {
+// Helper: Normalize text and check against a specific list
+function containsFilteredWord(text, wordList) {
   if (!text) return false;
   
   const lower = text.toLowerCase();
   
   // 1. Direct check
-  if (BAD_WORDS.some(word => lower.includes(word))) return true;
+  if (wordList.some(word => lower.includes(word))) return true;
 
   // 2. Normalize (Remove spaces, symbols, convert leetspeak)
   let normalized = lower.split('').map(char => LEET_MAP[char] || char).join('');
   normalized = normalized.replace(/[^a-z]/g, ''); // Remove non-letters
 
   // Check normalized string against bad words
-  return BAD_WORDS.some(word => normalized.includes(word));
+  return wordList.some(word => normalized.includes(word));
+}
+
+// Wrapper for the general (combined) bad word list check
+function containsBadWord(text) {
+    return containsFilteredWord(text, BAD_WORDS);
 }
 
 // Helper: Moderate Nickname 
 async function moderateNickname(member) {
-  // Check display name (which is nickname if set, or username if not)
-  if (containsBadWord(member.displayName)) {
+  // We use the SEVERE_WORDS list here to keep the nickname filter stricter 
+  // than the message filter, as nicknames are permanent.
+  if (containsFilteredWord(member.displayName, SEVERE_WORDS) || containsFilteredWord(member.displayName, MILD_BAD_WORDS)) {
     try {
       // **Bot must have a higher role than the user's highest role for this to work**
       if (member.manageable) {
@@ -126,19 +139,15 @@ async function moderateNickname(member) {
  * RECURRING FUNCTION: Checks all nicknames in the guild repeatedly.
  */
 async function runAutomatedNicknameScan(guild) {
-    if (!guild) return; // Safety check
-    
-    //console.log('Running automated nickname scan...'); // Suppress constant logging for frequent task
+    if (!guild) return; 
     let moderatedCount = 0;
     
     try {
-        // Fetches all members for the most current data (can be slow on very large servers)
         const members = await guild.members.fetch(); 
         
         for (const [id, member] of members) {
             if (member.user.bot) continue;
             
-            // Checks if name contains a bad word and attempts to moderate
             if (await moderateNickname(member)) {
                 moderatedCount++;
             }
@@ -170,7 +179,7 @@ function startAutomatedNicknameScan(guild) {
 }
 
 
-// ================= READY (UPDATED) =================
+// ================= READY =================
 client.once('ready', async () => {
   console.log(`✅ Logged in as ${client.user.tag}`);
 
@@ -478,7 +487,7 @@ client.on('messageCreate', async (message) => {
   const lowerContent = content.toLowerCase();
   const member = message.member;
 
-  // RULE: INAPPROPRIATE RP LOCKDOWN 
+  // RULE: INAPPROPRIATE RP LOCKDOWN (Uses the combined BAD_WORDS list)
   if (message.channel.id === RP_CHANNEL_ID && containsBadWord(lowerContent)) {
       const category = message.guild.channels.cache.get(RP_CATEGORY_ID);
       if (category && category.type === 4) { 
@@ -511,17 +520,10 @@ client.on('messageCreate', async (message) => {
       return;
   }
   
-  // RULE: STRICT PERSONAL INFORMATION FILTER (NEW)
-  const personalInfoRegex = /(\d{3}[-.\s]?\d{3}[-.\s]?\d{4})|(\b\d{4}[-.\s]?\d{4}[-.\s]?\d{4}[-.\s]?\d{4}\b)|(\b\d{16}\b)|(\b\d{9}\b)|(\b[a-zA-Z0-9._%+-]+@[a-zA-Z0-9.-]+\.[a-zA-Z]{2,}\b)/;
-  if (personalInfoRegex.test(content)) {
-      await message.delete().catch(() => {});
-      const log = client.channels.cache.get(LOG_CHANNEL_ID);
-      if (log) log.send(`🔒 **Personal Info Filter**\nUser: <@${message.author.id}>\nChannel: <#${message.channel.id}>\nReason: Attempted to post sensitive PII (Phone/Card/Email/SSN pattern).`);
-      return;
-  }
-  
+  // **REMOVED: RULE: STRICT PERSONAL INFORMATION FILTER**
+  // The PII filter has been removed as requested.
+ 
   // RULE: ANTI-HARASSMENT / ANTI-TROLLING (MUTE) (NEW)
-  // This mutes the user for explicit trolling/harassment directed at others.
   const explicitTrollHarassRegex = /(^|\s)(mute|ban|harass|troll|bullying)\s+(that|him|her|them)\s+(\S+|$)|(you\s+(are|re)\s+(a|an)?\s+(troll|bully|harasser))/i;
 
   if (explicitTrollHarassRegex.test(lowerContent)) {
@@ -555,7 +557,6 @@ client.on('messageCreate', async (message) => {
   }
   
   // RULE: POLITICAL CONTENT SOFT FILTER (NEW)
-  // If political keyword count >= 4, it's considered "too much."
   const politicalKeywords = ['politics', 'government', 'election', 'congress', 'biden', 'trump', 'conservative', 'liberal', 'democracy', 'republican', 'democrat'];
   let politicalCount = 0;
   for (const keyword of politicalKeywords) {
@@ -582,25 +583,36 @@ client.on('messageCreate', async (message) => {
   }
 
   // RULE 5: INAPPROPRIATE USERNAME CHECK (on message send)
-  // This ensures that if a user changes their name *between* the 5-second scans and sends a message, 
-  // the bad name is caught immediately.
   if (member) {
     await moderateNickname(member);
   }
 
-  // RULE 1: Be Respectful / Strict Bad Word Filter / Racial Slurs / Bypass Detection (Catching harassment jokes)
-  if (containsBadWord(lowerContent)) {
+  // --- START REFINED BAD WORD CHECK ---
+  // 1. SEVERE CHECK (Slurs, threats) -> Triggers Timeout
+  if (containsFilteredWord(lowerContent, SEVERE_WORDS)) {
     await message.delete().catch(() => {});
     
     try {
-      // 30 minute timeout for violation
-      if (member) await member.timeout(30 * 60 * 1000, "Bad Word / Slur / Harassment Joke").catch(() => {});
+      // 30 minute timeout for severe violation
+      if (member) await member.timeout(30 * 60 * 1000, "Severe Violation: Slur/Threat/Hate Speech").catch(() => {});
       
       const log = client.channels.cache.get(LOG_CHANNEL_ID);
-      if (log) log.send(`🚨 **Filter Violation**\nUser: <@${message.author.id}>\nContent: ||${message.content}||`);
+      if (log) log.send(`🚨 **SEVERE Filter Violation (Timeout)**\nUser: <@${message.author.id}>\nContent: ||${message.content}||`);
     } catch {}
     return;
   }
+  
+  // 2. MILD CHECK (Common swearing) -> Triggers Deletion only
+  if (containsFilteredWord(lowerContent, MILD_BAD_WORDS)) {
+    await message.delete().catch(() => {});
+    
+    try {
+      const log = client.channels.cache.get(LOG_CHANNEL_ID);
+      if (log) log.send(`⚠️ **Mild Filter Violation (Deletion Only)**\nUser: <@${message.author.id}>\nContent: ||${message.content}||`);
+    } catch {}
+    return;
+  }
+  // --- END REFINED BAD WORD CHECK ---
 
   // RULE 4 & 6: Advertising / Scam / Links
   const isAdOrScam = 
