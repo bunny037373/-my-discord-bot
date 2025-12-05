@@ -22,7 +22,7 @@ const TARGET_CHANNEL_ID = '1415134887232540764';
 const GUILD_ID = '1369477266958192720';
 const LOG_CHANNEL_ID = '1414286807360602112';          // existing log channel
 const TRANSCRIPT_CHANNEL_ID = '1414354204079689849';   // transcript channel for closed tickets
-const SETUP_POST_CHANNEL = '1445628128423579660';      // where /setup posts the Create Ticket message
+const SETUP_POST_CHANNEL = '1414352972304879626';      // where /setup posts the Create Ticket message
 const MUTE_ROLE_ID = '1446530920650899536';           // Placeholder: **REPLACE THIS WITH YOUR ACTUAL MUTE ROLE ID**
 
 // NEW RP CONFIGURATION
