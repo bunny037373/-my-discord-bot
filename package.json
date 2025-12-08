@@ -1,12 +1,13 @@
 {
-  "name": "my-discord-bot",
-  "version": "1.0.0",
-  "main": "index.js",
-  "scripts": {
-    "start": "node index.js"
-  },
-  "dependencies": {
-    "discord.js": "^14.0.0",
-    "node-fetch": "^2.6.7"  
-  }
+  "name": "my-discord-bot",
+  "version": "1.0.0",
+  "main": "index.js",
+  "scripts": {
+    "start": "node index.js"
+  },
+  "dependencies": {
+    "discord.js": "^14.0.0",
+    "node-fetch": "^2.6.7",
+    "@google/generative-ai": "^0.21.0"
+  }
 }
