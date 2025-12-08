@@ -13,28 +13,28 @@ const {
 const http = require('http');
 // REMOVED: const fetch = require('node-fetch'); 
 
-// --- ADDED: Google AI Import ---
+// --- CRITICAL MISSING PIECE 1: Google AI Import ---
 const { GoogleGenerativeAI } = require("@google/generative-ai");
-// -----------------------------
+// ----------------------------------------------------
 
 if (!process.env.TOKEN) {
   console.error("❌ TOKEN not found. Add TOKEN in Render Environment Variables.");
   process.exit(1);
 }
 
-// --- ADDED: Google AI Config ---
+// --- CRITICAL MISSING PIECE 2: Google AI Initialization ---
 if (!process.env.GOOGLE_API_KEY) {
   console.error("⚠️ GOOGLE_API_KEY not found in Render Environment Variables. AI commands will fail.");
 }
 
-// Initialize Gemini
+// Initialize Gemini client securely
 const genAI = process.env.GOOGLE_API_KEY 
   ? new GoogleGenerativeAI(process.env.GOOGLE_API_KEY) 
   : null;
 
 // Use the flash model for general queries
 const model = genAI ? genAI.getGenerativeModel({ model: "gemini-1.5-flash" }) : null;
-// -----------------------------
+// -----------------------------------------------------------
 
 
 // ====================== CONFIG ======================
@@ -229,7 +229,7 @@ client.once('ready', async () => {
   // --- ANTI-INVITE PROTECTION (ON BOOT) ---
   client.guilds.cache.forEach(async (guild) => {
     if (guild.id !== GUILD_ID) {
-        console.log(`❌ Found unauthorized server on startup: ${guild.name} (${guild.id}). Leaving...`);
+        console.log(`❌ Found unauthorized server on startup: ${guild.name} (${guild.id}). Leaving immediately.`);
         try {
             await guild.leave();
         } catch (err) {
@@ -274,7 +274,7 @@ client.once('ready', async () => {
           .setDescription('The message to send')
           .setRequired(true)),
           
-    // --- ADDED: Ask Google AI Command Registration ---
+    // --- CRITICAL MISSING PIECE 3: Ask Google AI Command Registration ---
     new SlashCommandBuilder()
       .setName('ask')
       .setDescription('Ask the bot (Gemini AI) a question')
@@ -282,7 +282,7 @@ client.once('ready', async () => {
         opt.setName('question')
           .setDescription('What do you want to ask?')
           .setRequired(true)),
-    // --------------------------------------------------
+    // ------------------------------------------------------------------
 
     new SlashCommandBuilder().setName('help').setDescription('Get help'),
     new SlashCommandBuilder().setName('serverinfo').setDescription('Get server information'),
@@ -357,7 +357,7 @@ client.on('interactionCreate', async (interaction) => {
       return interaction.reply({ content: "✅ Sent anonymously", ephemeral: true });
     }
 
-    // --- ADDED: ASK COMMAND HANDLER ---
+    // --- CRITICAL MISSING PIECE 4: ASK COMMAND HANDLER ---
     if (interaction.commandName === 'ask') {
         const question = interaction.options.getString('question');
 
@@ -366,7 +366,7 @@ client.on('interactionCreate', async (interaction) => {
           return interaction.reply({ content: "❌ That question contains filtered words.", ephemeral: true });
         }
 
-        // Check if API key is missing
+        // Check if AI client failed to initialize (because GOOGLE_API_KEY was missing on Render)
         if (!model) {
             return interaction.reply({ content: "❌ The AI system is not configured (missing GOOGLE_API_KEY).", ephemeral: true });
         }
@@ -398,7 +398,7 @@ client.on('interactionCreate', async (interaction) => {
         }
         return;
     }
-    // ----------------------------------
+    // ----------------------------------------------------
 
 
     if (interaction.commandName === 'sayrp') {
