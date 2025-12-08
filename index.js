@@ -12,7 +12,7 @@ const {
 } = require('discord.js');
 const http = require('http');
 
-// NOTE: You need to install 'node-fetch' if you haven't already: npm install node-fetch
+// Added fetch for webhooks
 const fetch = require('node-fetch'); 
 
 if (!process.env.TOKEN) {
@@ -21,9 +21,8 @@ if (!process.env.TOKEN) {
 }
 
 // ====================== CONFIG ======================
-// --- NEW WEBHOOK CONFIGURATION ---
 // !! IMPORTANT: REPLACE THESE PLACEHOLDERS WITH YOUR ACTUAL WEBHOOK URLS !!
-const STORMY_WEBHOOK_URL = 'https://discord.com/api/webhooks/1447413488216440923/FFxuqEhJnm1JJhMKRoUoy4jSEka4TmqzsNJ9N8q7nbR6G0TV8RYP9P2GCpRxgiNqwBkP'; 
+const STORMY_WEBHOOK_URL = 'YOUR_STORMY_WEBHOOK_URL_HERE'; 
 const HOPS_WEBHOOK_URL = 'YOUR_HOPS_WEBHOOK_URL_HERE';     
 // ---------------------------------
 
@@ -51,6 +50,7 @@ channel to create a more helpful environment to tell a mod`;
 
 // 0. ALLOWED WORDS (WHITELIST)
 // These words are removed from the text BEFORE filtering checks.
+// This allows "assist" (contains ass) or "cocktail" (contains cock) to pass.
 const ALLOWED_WORDS = [
   "assist", "assistance", "assistant", "associat", // Allows: assistance, associate
   "class", "classic", "glass", "grass", "pass", "bass", "compass", // Common 'ass' triggers
@@ -115,7 +115,10 @@ function containsFilteredWord(text, wordList) {
   let lower = text.toLowerCase();
 
   // --- STEP 1: REMOVE ALLOWED WORDS ---
+  // If the user says "I need assistance", we remove "assistance" from the check string.
+  // The string becomes "I need ". This prevents "ass" from triggering.
   ALLOWED_WORDS.forEach(safeWord => {
+      // We use replaceAll to remove all occurrences of safe words
       if (lower.includes(safeWord)) {
           lower = lower.replaceAll(safeWord, '');
       }
@@ -139,24 +142,27 @@ function containsBadWord(text) {
 
 // Helper: Moderate Nickname 
 async function moderateNickname(member) {
+  // We use the SEVERE_WORDS list here to keep the nickname filter stricter 
+  // than the message filter, as nicknames are permanent.
   if (containsFilteredWord(member.displayName, SEVERE_WORDS) || containsFilteredWord(member.displayName, MILD_BAD_WORDS)) {
     try {
+      // **Bot must have a higher role than the user's highest role for this to work**
       if (member.manageable) {
         await member.setNickname("[moderated nickname by hopper]");
         
         const log = member.guild.channels.cache.get(LOG_CHANNEL_ID);
         if (log) log.send(`🛡️ **Nickname Moderated**\nUser: <@${member.id}>\nOld Name: ||${member.user.username}||\nReason: Inappropriate Username`);
-        return true; 
+        return true; // Nickname was moderated
       } else {
          console.log(`Failed to moderate nickname for ${member.user.tag}: Bot role is lower than user's highest role.`);
-         return false; 
+         return false; // Nickname could not be moderated due to permissions
       }
     } catch (err) {
       console.error(`Failed to moderate nickname for ${member.user.tag}:`, err);
       return false;
     }
   }
-  return false; 
+  return false; // No moderation needed
 }
 
 /**
@@ -179,6 +185,7 @@ async function runAutomatedNicknameScan(guild) {
         
         if (moderatedCount > 0) {
             const log = guild.channels.cache.get(LOG_CHANNEL_ID);
+            // Only log if something was moderated
             if (log) log.send(`✅ **Recurring Scan Complete:** Checked ${members.size} members. Moderated **${moderatedCount}** inappropriate names.`);
         }
         
@@ -191,6 +198,7 @@ async function runAutomatedNicknameScan(guild) {
  * Starts the recurring nickname scan.
  */
 function startAutomatedNicknameScan(guild) {
+    // Run once immediately, then every NICKNAME_SCAN_INTERVAL (5 seconds)
     runAutomatedNicknameScan(guild); 
     
     setInterval(() => {
@@ -206,6 +214,7 @@ client.once('ready', async () => {
   console.log(`✅ Logged in as ${client.user.tag}`);
 
   // --- ANTI-INVITE PROTECTION (ON BOOT) ---
+  // If the bot is already in unauthorized servers when it starts, it will leave them.
   client.guilds.cache.forEach(async (guild) => {
     if (guild.id !== GUILD_ID) {
         console.log(`❌ Found unauthorized server on startup: ${guild.name} (${guild.id}). Leaving...`);
@@ -236,7 +245,7 @@ client.once('ready', async () => {
       .setName('say')
       .setDescription('Make the bot say something anonymously')
       .addStringOption(opt => opt.setName('text').setDescription('Text for the bot to say').setRequired(true)),
-    
+
     // --- NEW: /sayrp command ---
     new SlashCommandBuilder()
       .setName('sayrp')
@@ -296,6 +305,7 @@ client.once('ready', async () => {
 });
 
 // ================= ANTI-INVITE PROTECTION (EVENT) =================
+// This triggers immediately if the bot is invited to a new server
 client.on('guildCreate', async (guild) => {
     if (guild.id !== GUILD_ID) {
         console.log(`⚠️ Bot was invited to unauthorized server: ${guild.name} (${guild.id}). Leaving immediately.`);
@@ -338,16 +348,18 @@ client.on('interactionCreate', async (interaction) => {
 
       let webhookUrl;
       let username;
-      let avatarUrl;
-
+      let avatarUrl; // Placeholder avatar URLs
+      
       if (character === 'stormy') {
         webhookUrl = STORMY_WEBHOOK_URL;
         username = 'Stormy';
-        avatarUrl = 'https://i.imgur.com/example_stormy.png'; // REPLACE with Stormy's actual image URL
+        // Replace this placeholder with Stormy's actual avatar URL
+        avatarUrl = 'https://i.imgur.com/example_stormy.png'; 
       } else if (character === 'hops') {
         webhookUrl = HOPS_WEBHOOK_URL;
         username = 'Hops';
-        avatarUrl = 'https://i.imgur.com/example_hops.png'; // REPLACE with Hops' actual image URL
+        // Replace this placeholder with Hops' actual avatar URL
+        avatarUrl = 'https://i.imgur.com/example_hops.png'; 
       } else {
         return interaction.reply({ content: "Invalid character selected.", ephemeral: true });
       }
@@ -364,12 +376,10 @@ client.on('interactionCreate', async (interaction) => {
             content: message,
             username: username,
             avatar_url: avatarUrl,
-            // You can optionally add a small note showing who ran the command
-            // embeds: [{ description: `(Sent by ${interaction.user.tag})`, color: 3447003 }] 
           })
         });
 
-        // The original interaction message is replied to ephemerally
+        // Reply to the user privately
         await interaction.reply({ content: `✅ Message sent as **${username}**!`, ephemeral: true });
 
       } catch (error) {
@@ -624,6 +634,7 @@ client.on('messageCreate', async (message) => {
       }
   }
    
+  // **REPETITIVE CHARACTER SPAM RULE REMOVED HERE**
   
   // RULE: ANTI-HARASSMENT / ANTI-TROLLING (MUTE) (NEW)
   const explicitTrollHarassRegex = /(^|\s)(mute|ban|harass|troll|bullying)\s+(that|him|her|them)\s+(\S+|$)|(you\s+(are|re)\s+(a|an)?\s+(troll|bully|harasser))/i;
