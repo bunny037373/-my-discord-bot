@@ -11,6 +11,7 @@ const {
   PermissionsBitField
 } = require('discord.js');
 const http = require('http');
+// REMOVED: const fetch = require('node-fetch'); 
 
 if (!process.env.TOKEN) {
   console.error("❌ TOKEN not found. Add TOKEN in Render Environment Variables.");
@@ -19,13 +20,16 @@ if (!process.env.TOKEN) {
 
 // ====================== CONFIG ======================
 
-// ** AVATAR URLS (No longer strictly needed for /sayrp but kept) **
+// REMOVED: STORMY_WEBHOOK_URL and HOPS_WEBHOOK_URL
+
+// ** AVATAR URLS (Kept for consistency, but bot's own avatar is used for Hops) **
 const STORMY_AVATAR_URL = 'https://i.imgur.com/r62Y0c7.png'; 
 const HOPS_AVATAR_URL = 'https://i.imgur.com/r62Y0c7.png';     
 
 // NEW CONFIG FOR NON-WEBHOOK RP
 // ** CRITICAL: REPLACE THIS WITH THE DIRECT LINK TO IMG_9089.png **
-const STORMY_IMAGE_URL = 'IMG_9089.png'; 
+// This URL will be attached as a file to Stormy's message.
+const STORMY_IMAGE_URL = 'YOUR_LINK_TO_STORMY_RP_IMAGE.png'; 
 // ---------------------------------
 
 const TARGET_CHANNEL_ID = '1415134887232540764';
@@ -33,7 +37,10 @@ const GUILD_ID = '1369477266958192720';
 const LOG_CHANNEL_ID = '1414286807360602112';           
 const TRANSCRIPT_CHANNEL_ID = '1414354204079689849';   
 const SETUP_POST_CHANNEL = '1445628128423579660';       
-const MUTE_ROLE_ID = 'YOUR_CORRECT_MUTE_ROLE_ID'; // <-- **SET THIS ID** const RP_CHANNEL_ID = '1421219064985948346';
+const MUTE_ROLE_ID = '1446530920650899536';            
+
+// NEW RP CONFIGURATION
+const RP_CHANNEL_ID = '1421219064985948346';
 const RP_CATEGORY_ID = '1446530920650899536';
 
 // NICKNAME SCAN INTERVAL (5 seconds = 5000 milliseconds)
@@ -339,9 +346,9 @@ client.on('interactionCreate', async (interaction) => {
         // Check if the image URL is set and use it as an attachment object
         if (STORMY_IMAGE_URL && !STORMY_IMAGE_URL.includes('YOUR_LINK')) {
             // This is the key change: sending the image URL as a file attachment
-            fileAttachment = [{ attachment: STORMY_IMAGE_URL, name: 'IMG_9089.png' }];
+            fileAttachment = [{ attachment: STORMY_IMAGE_URL, name: 'stormy_rp_image.png' }];
         } else {
-            replyContent += "\n⚠️ **NOTE:** Stormy's image URL placeholder is still set. The image will not be attached.";
+            replyContent += "\n⚠️ **NOTE:** Stormy's image URL placeholder is still set. The image will not be attached until you replace 'YOUR_LINK_TO_STORMY_RP_IMAGE.png' with a real URL in the CONFIG.";
         }
 
       } else if (character === 'hops') {
