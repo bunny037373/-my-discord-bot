@@ -21,13 +21,15 @@ if (!process.env.TOKEN) {
 
 // ====================== CONFIG ======================
 
-// !! IMPORTANT: The Stormy URL has been updated with the one you provided. 
-// !! You must replace the HOPS URL placeholder below.
-const STORMY_WEBHOOK_URL = 'https://discord.com/api/webhooks/1447413488216440923/FFxuqEhJnm1JJhMKRoUoy4jSEka4TmqzsNJ9N8q7nbR6G0TV8RYP9P2GCpRxgiNqwBkP'; 
-const HOPS_WEBHOOK_URL = 'YOUR_HOPS_WEBHOOK_URL_HERE'; 
-// !! IMPORTANT: Update these avatar URLs with actual image links !!
-const STORMY_AVATAR_URL = 'https://i.imgur.com/example_stormy_avatar.png'; 
-const HOPS_AVATAR_URL = 'https://i.imgur.com/example_hops_avatar.png';   
+// !! WEBHOOK URLS (FIXED) !!
+const STORMY_WEBHOOK_URL = 'https://discord.com/api/webhooks/1447413488216440923/FFxuqEhJnm1JJhMKRoUoy4jSEka4TmqzsNJ9N8q7nbR6G0TV8RYP9P2GCrRxgiNqwBkP'; 
+const HOPS_WEBHOOK_URL = 'https://discord.com/api/webhooks/1447423354284806245/DTdo5MLZ88ztpmrUh1lLghCoPGrZzY2Wd86h2SHkx6svfH0qWI8Y-uQQ7Xn-VK-ChTSM'; 
+
+// ** AVATAR URLS (NOW USING GENERIC PLACEHOLDERS TO PREVENT THE ERROR) **
+// NOTE: You can replace these two links with your final character images at any time.
+const STORMY_AVATAR_URL = 'https://i.imgur.com/r62Y0c7.png'; // Generic image link
+const HOPS_AVATAR_URL = 'https://i.imgur.com/r62Y0c7.png';     // Generic image link
+// ---------------------------------
 // ---------------------------------
 
 const TARGET_CHANNEL_ID = '1415134887232540764';
