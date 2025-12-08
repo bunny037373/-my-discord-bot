@@ -13,29 +13,10 @@ const {
 const http = require('http');
 // REMOVED: const fetch = require('node-fetch'); 
 
-// --- CRITICAL MISSING PIECE 1: Google AI Import ---
-const { GoogleGenerativeAI } = require("@google/generative-ai");
-// ----------------------------------------------------
-
 if (!process.env.TOKEN) {
   console.error("❌ TOKEN not found. Add TOKEN in Render Environment Variables.");
   process.exit(1);
 }
-
-// --- CRITICAL MISSING PIECE 2: Google AI Initialization ---
-if (!process.env.GOOGLE_API_KEY) {
-  console.error("⚠️ GOOGLE_API_KEY not found in Render Environment Variables. AI commands will fail.");
-}
-
-// Initialize Gemini client securely
-const genAI = process.env.GOOGLE_API_KEY 
-  ? new GoogleGenerativeAI(process.env.GOOGLE_API_KEY) 
-  : null;
-
-// Use the flash model for general queries
-const model = genAI ? genAI.getGenerativeModel({ model: "gemini-1.5-flash" }) : null;
-// -----------------------------------------------------------
-
 
 // ====================== CONFIG ======================
 
@@ -229,7 +210,7 @@ client.once('ready', async () => {
   // --- ANTI-INVITE PROTECTION (ON BOOT) ---
   client.guilds.cache.forEach(async (guild) => {
     if (guild.id !== GUILD_ID) {
-        console.log(`❌ Found unauthorized server on startup: ${guild.name} (${guild.id}). Leaving immediately.`);
+        console.log(`❌ Found unauthorized server on startup: ${guild.name} (${guild.id}). Leaving...`);
         try {
             await guild.leave();
         } catch (err) {
@@ -251,7 +232,7 @@ client.once('ready', async () => {
   }
 
 
-  // Register slash commands (with /sayrp and /ask)
+  // Register slash commands (with /sayrp)
   const commands = [
     new SlashCommandBuilder()
       .setName('say')
@@ -273,16 +254,6 @@ client.once('ready', async () => {
         opt.setName('message')
           .setDescription('The message to send')
           .setRequired(true)),
-          
-    // --- CRITICAL MISSING PIECE 3: Ask Google AI Command Registration ---
-    new SlashCommandBuilder()
-      .setName('ask')
-      .setDescription('Ask the bot (Gemini AI) a question')
-      .addStringOption(opt => 
-        opt.setName('question')
-          .setDescription('What do you want to ask?')
-          .setRequired(true)),
-    // ------------------------------------------------------------------
 
     new SlashCommandBuilder().setName('help').setDescription('Get help'),
     new SlashCommandBuilder().setName('serverinfo').setDescription('Get server information'),
@@ -356,50 +327,6 @@ client.on('interactionCreate', async (interaction) => {
       await interaction.channel.send(text);
       return interaction.reply({ content: "✅ Sent anonymously", ephemeral: true });
     }
-
-    // --- CRITICAL MISSING PIECE 4: ASK COMMAND HANDLER ---
-    if (interaction.commandName === 'ask') {
-        const question = interaction.options.getString('question');
-
-        // Check if the user's question contains bad words
-        if (containsBadWord(question)) {
-          return interaction.reply({ content: "❌ That question contains filtered words.", ephemeral: true });
-        }
-
-        // Check if AI client failed to initialize (because GOOGLE_API_KEY was missing on Render)
-        if (!model) {
-            return interaction.reply({ content: "❌ The AI system is not configured (missing GOOGLE_API_KEY).", ephemeral: true });
-        }
-
-        // Defer reply (AI takes time)
-        await interaction.deferReply();
-
-        try {
-          // Use the Gemini model to generate content
-          const result = await model.generateContent(question);
-          const response = await result.response;
-          let text = response.text; 
-
-          // Truncate if > 1900 chars (Discord Limit is 2000)
-          if (text.length > 1900) {
-            text = text.substring(0, 1900) + "... (truncated)";
-          }
-
-          // Filter AI output (safety check)
-          if (containsBadWord(text)) {
-              return interaction.editReply("❌ The AI response was blocked by the safety filter.");
-          }
-
-          await interaction.editReply(`**❓ Question:** ${question}\n\n**🤖 Gemini:**\n${text}`);
-
-        } catch (error) {
-          console.error("AI Error:", error);
-          await interaction.editReply("❌ Sorry, I had trouble connecting to Google AI.");
-        }
-        return;
-    }
-    // ----------------------------------------------------
-
 
     if (interaction.commandName === 'sayrp') {
       const character = interaction.options.getString('character');
