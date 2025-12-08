@@ -13,7 +13,7 @@ const {
 const http = require('http');
 // REMOVED: const fetch = require('node-fetch'); 
 
-// --- NEW: Google AI Import ---
+// --- ADDED: Google AI Import ---
 const { GoogleGenerativeAI } = require("@google/generative-ai");
 // -----------------------------
 
@@ -22,7 +22,7 @@ if (!process.env.TOKEN) {
   process.exit(1);
 }
 
-// --- NEW: Google AI Config ---
+// --- ADDED: Google AI Config ---
 if (!process.env.GOOGLE_API_KEY) {
   console.error("⚠️ GOOGLE_API_KEY not found in Render Environment Variables. AI commands will fail.");
 }
@@ -38,6 +38,8 @@ const model = genAI ? genAI.getGenerativeModel({ model: "gemini-1.5-flash" }) : 
 
 
 // ====================== CONFIG ======================
+
+// REMOVED: STORMY_WEBHOOK_URL and HOPS_WEBHOOK_URL
 
 // ** AVATAR URLS (Kept for consistency, but bot's own avatar is used for Hops) **
 const STORMY_AVATAR_URL = 'https://i.imgur.com/r62Y0c7.png'; 
@@ -272,7 +274,7 @@ client.once('ready', async () => {
           .setDescription('The message to send')
           .setRequired(true)),
           
-    // --- NEW: Ask Google AI Command ---
+    // --- ADDED: Ask Google AI Command Registration ---
     new SlashCommandBuilder()
       .setName('ask')
       .setDescription('Ask the bot (Gemini AI) a question')
@@ -280,7 +282,7 @@ client.once('ready', async () => {
         opt.setName('question')
           .setDescription('What do you want to ask?')
           .setRequired(true)),
-    // ----------------------------------
+    // --------------------------------------------------
 
     new SlashCommandBuilder().setName('help').setDescription('Get help'),
     new SlashCommandBuilder().setName('serverinfo').setDescription('Get server information'),
@@ -355,7 +357,7 @@ client.on('interactionCreate', async (interaction) => {
       return interaction.reply({ content: "✅ Sent anonymously", ephemeral: true });
     }
 
-    // --- NEW: ASK COMMAND HANDLER ---
+    // --- ADDED: ASK COMMAND HANDLER ---
     if (interaction.commandName === 'ask') {
         const question = interaction.options.getString('question');
 
