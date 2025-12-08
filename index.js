@@ -11,8 +11,6 @@ const {
   PermissionsBitField
 } = require('discord.js');
 const http = require('http');
-// IMPORTANT: Node-fetch is required for webhooks
-const fetch = require('node-fetch'); 
 
 if (!process.env.TOKEN) {
   console.error("❌ TOKEN not found. Add TOKEN in Render Environment Variables.");
@@ -21,14 +19,13 @@ if (!process.env.TOKEN) {
 
 // ====================== CONFIG ======================
 
-// !! WEBHOOK URLS (MUST BE UPDATED TO FIX 401 ERROR) !!
-// CRITICAL: You must copy a fresh webhook URL for Stormy from Discord and replace the placeholder below.
-const STORMY_WEBHOOK_URL = 'https://discord.com/api/webhooks/1447413488216440923/REPLACE_WITH_FRESH_STORMY_WEBHOOK_KEY'; 
-const HOPS_WEBHOOK_URL = 'https://discord.com/api/webhooks/1447423354284806245/DTdo5MLZ88ztpmrUh1lLghCoPGrZzY2Wd86h2SHkx6svfH0qWI8Y-uQQ7Xn-VK-ChTSM'; 
+// ** AVATAR URLS (No longer strictly needed for /sayrp but kept) **
+const STORMY_AVATAR_URL = 'https://i.imgur.com/r62Y0c7.png'; 
+const HOPS_AVATAR_URL = 'https://i.imgur.com/r62Y0c7.png';     
 
-// ** AVATAR URLS **
-const STORMY_AVATAR_URL = 'https://i.imgur.com/r62Y0c7.png'; // Generic image link
-const HOPS_AVATAR_URL = 'https://i.imgur.com/r62Y0c7.png';     // Generic image link
+// NEW CONFIG FOR NON-WEBHOOK RP
+// ** CRITICAL: REPLACE THIS WITH THE DIRECT LINK TO IMG_9089.png **
+const STORMY_IMAGE_URL = 'IMG_9089.png'; 
 // ---------------------------------
 
 const TARGET_CHANNEL_ID = '1415134887232540764';
@@ -36,10 +33,7 @@ const GUILD_ID = '1369477266958192720';
 const LOG_CHANNEL_ID = '1414286807360602112';           
 const TRANSCRIPT_CHANNEL_ID = '1414354204079689849';   
 const SETUP_POST_CHANNEL = '1445628128423579660';       
-const MUTE_ROLE_ID = 'YOUR_CORRECT_MUTE_ROLE_ID'; // <-- **SET THIS ID** (Was incorrectly same as RP Category ID)          
-
-// NEW RP CONFIGURATION
-const RP_CHANNEL_ID = '1421219064985948346';
+const MUTE_ROLE_ID = 'YOUR_CORRECT_MUTE_ROLE_ID'; // <-- **SET THIS ID** const RP_CHANNEL_ID = '1421219064985948346';
 const RP_CATEGORY_ID = '1446530920650899536';
 
 // NICKNAME SCAN INTERVAL (5 seconds = 5000 milliseconds)
@@ -240,7 +234,7 @@ client.once('ready', async () => {
 
     new SlashCommandBuilder()
       .setName('sayrp')
-      .setDescription('Speak as a character via webhook')
+      .setDescription('Speak as a character (uses bot to send message)')
       .addStringOption(opt => 
         opt.setName('character')
           .setDescription('The character to speak as (Stormy or Hops)')
@@ -333,53 +327,45 @@ client.on('interactionCreate', async (interaction) => {
       
       if (containsBadWord(message)) return interaction.reply({ content: "❌ That message violates the filter and cannot be sent.", ephemeral: true });
 
-      let webhookUrl;
-      let username;
-      let avatarUrl; 
-      
+      let contentToSend = '';
+      let replyContent = '';
+      let fileAttachment = null; 
+
       if (character === 'stormy') {
-        webhookUrl = STORMY_WEBHOOK_URL;
-        username = 'Stormy';
-        avatarUrl = STORMY_AVATAR_URL; 
+        // Stormy's message will contain the image and the character name in bold.
+        contentToSend = `**Stormy Bunny:** ${message}`;
+        replyContent = `✅ Message sent as **Stormy**!`;
+        
+        // Check if the image URL is set and use it as an attachment object
+        if (STORMY_IMAGE_URL && !STORMY_IMAGE_URL.includes('YOUR_LINK')) {
+            // This is the key change: sending the image URL as a file attachment
+            fileAttachment = [{ attachment: STORMY_IMAGE_URL, name: 'IMG_9089.png' }];
+        } else {
+            replyContent += "\n⚠️ **NOTE:** Stormy's image URL placeholder is still set. The image will not be attached.";
+        }
+
       } else if (character === 'hops') {
-        webhookUrl = HOPS_WEBHOOK_URL;
-        username = 'Hops';
-        avatarUrl = HOPS_AVATAR_URL; 
+        // Hops's message will contain the character name in bold (using the bot's avatar).
+        contentToSend = `**Hops (Bot):** ${message}`;
+        replyContent = `✅ Message sent as **Hops**!`;
       } else {
         return interaction.reply({ content: "Invalid character selected.", ephemeral: true });
       }
 
-      // Check for placeholder URLs
-      if (webhookUrl.includes('REPLACE_') || webhookUrl.includes('YOUR_') || avatarUrl.includes('example_')) {
-          return interaction.reply({ 
-            content: `❌ **Configuration Error:** The ${username} Webhook URL or Mute Role ID has not been fully configured in the bot's code. Please update the placeholder IDs in the CONFIG block.`, 
-            ephemeral: true 
-          });
-      }
-
       try {
-        const response = await fetch(webhookUrl, {
-          method: 'POST',
-          headers: { 'Content-Type': 'application/json' },
-          body: JSON.stringify({
-            content: message,
-            username: username,
-            avatar_url: avatarUrl,
-            // Disable mentions in the webhook message
-            allowed_mentions: { parse: [] } 
-          })
+        await interaction.channel.send({
+          content: contentToSend,
+          files: fileAttachment ? fileAttachment : [],
+          // Disable mentions in the message
+          allowedMentions: { parse: [] }
         });
-
-        if (!response.ok) {
-            console.error(`Webhook failed for ${username}: ${response.statusText}`);
-            return interaction.reply({ content: `❌ Failed to send message as ${username}. Discord API responded with error code: ${response.status}.`, ephemeral: true });
-        }
-
-        await interaction.reply({ content: `✅ Message sent as **${username}**!`, ephemeral: true });
+        
+        // Reply privately to the user
+        await interaction.reply({ content: replyContent, ephemeral: true });
 
       } catch (error) {
-        console.error('Webhook execution failed:', error);
-        await interaction.reply({ content: '❌ Failed to send message via webhook. Check the URL and permissions.', ephemeral: true });
+        console.error('Failed to send RP message:', error);
+        await interaction.reply({ content: '❌ Failed to send RP message. Check bot permissions.', ephemeral: true });
       }
       return; 
     }
