@@ -42,7 +42,7 @@ channel to create a more helpful environment to tell a mod`;
 
 // 0. ALLOWED WORDS (WHITELIST)
 // These words are removed from the text BEFORE filtering checks.
-// This allows "assist" (contains ass) or "clock" (contains cock) to pass.
+// This allows "assist" (contains ass) or "cocktail" (contains cock) to pass.
 const ALLOWED_WORDS = [
   "assist", "assistance", "assistant", "associat", // Allows: assistance, associate
   "class", "classic", "glass", "grass", "pass", "bass", "compass", // Common 'ass' triggers
@@ -558,19 +558,8 @@ client.on('messageCreate', async (message) => {
       }
   }
    
-  // RULE: REPETITIVE CHARACTER SPAM (15+ characters)
-  const repetitiveRegex = /(.)\1{14,}/; 
-  if (repetitiveRegex.test(content)) {
-      await message.delete().catch(() => {});
-      try {
-          const warning = await message.channel.send(`Woah, sorry <@${message.author.id}>, but your message has been deleted because it contained more than 15 repetitive characters.`);
-          setTimeout(() => warning.delete().catch(() => {}), 5000); 
-      } catch (e) {
-          console.error("Failed to send/delete spam warning:", e);
-      }
-      return;
-  }
-   
+  // **REPETITIVE CHARACTER SPAM RULE REMOVED HERE**
+  
   // RULE: ANTI-HARASSMENT / ANTI-TROLLING (MUTE) (NEW)
   const explicitTrollHarassRegex = /(^|\s)(mute|ban|harass|troll|bullying)\s+(that|him|her|them)\s+(\S+|$)|(you\s+(are|re)\s+(a|an)?\s+(troll|bully|harasser))/i;
 
