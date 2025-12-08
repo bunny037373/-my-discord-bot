@@ -11,8 +11,7 @@ const {
   PermissionsBitField
 } = require('discord.js');
 const http = require('http');
-
-// Added fetch for webhooks
+// IMPORTANT: Node-fetch is required for webhooks
 const fetch = require('node-fetch'); 
 
 if (!process.env.TOKEN) {
@@ -21,17 +20,22 @@ if (!process.env.TOKEN) {
 }
 
 // ====================== CONFIG ======================
-// !! IMPORTANT: REPLACE THESE PLACEHOLDERS WITH YOUR ACTUAL WEBHOOK URLS !!
+
+// !! IMPORTANT: The Stormy URL has been updated with the one you provided. 
+// !! You must replace the HOPS URL placeholder below.
 const STORMY_WEBHOOK_URL = 'https://discord.com/api/webhooks/1447413488216440923/FFxuqEhJnm1JJhMKRoUoy4jSEka4TmqzsNJ9N8q7nbR6G0TV8RYP9P2GCpRxgiNqwBkP'; 
-const HOPS_WEBHOOK_URL = 'YOUR_HOPS_WEBHOOK_URL_HERE';     
+const HOPS_WEBHOOK_URL = 'YOUR_HOPS_WEBHOOK_URL_HERE'; 
+// !! IMPORTANT: Update these avatar URLs with actual image links !!
+const STORMY_AVATAR_URL = 'https://i.imgur.com/example_stormy_avatar.png'; 
+const HOPS_AVATAR_URL = 'https://i.imgur.com/example_hops_avatar.png';   
 // ---------------------------------
 
 const TARGET_CHANNEL_ID = '1415134887232540764';
-const GUILD_ID = '1369477266958192720'; // The ONLY allowed server
-const LOG_CHANNEL_ID = '1414286807360602112';           // existing log channel
-const TRANSCRIPT_CHANNEL_ID = '1414354204079689849';   // transcript channel for closed tickets
-const SETUP_POST_CHANNEL = '1445628128423579660';       // where /setup posts the Create Ticket message
-const MUTE_ROLE_ID = '1446530920650899536';            // Placeholder: **REPLACE THIS WITH YOUR ACTUAL MUTE ROLE ID**
+const GUILD_ID = '1369477266958192720'; 
+const LOG_CHANNEL_ID = '1414286807360602112';           
+const TRANSCRIPT_CHANNEL_ID = '1414354204079689849';   
+const SETUP_POST_CHANNEL = '1445628128423579660';       
+const MUTE_ROLE_ID = '1446530920650899536';            
 
 // NEW RP CONFIGURATION
 const RP_CHANNEL_ID = '1421219064985948346';
@@ -49,11 +53,9 @@ channel to create a more helpful environment to tell a mod`;
 // ================= STRICT FILTER CONFIG =================
 
 // 0. ALLOWED WORDS (WHITELIST)
-// These words are removed from the text BEFORE filtering checks.
-// This allows "assist" (contains ass) or "cocktail" (contains cock) to pass.
 const ALLOWED_WORDS = [
-  "assist", "assistance", "assistant", "associat", // Allows: assistance, associate
-  "class", "classic", "glass", "grass", "pass", "bass", "compass", // Common 'ass' triggers
+  "assist", "assistance", "assistant", "associat", 
+  "class", "classic", "glass", "grass", "pass", "bass", "compass", 
   "hello", "shell", "peacock", "cocktail", "babcock"
 ];
 
@@ -71,7 +73,6 @@ const SEVERE_WORDS = [
   "retard", "spastic", "mong", "autist",
   "kys", "kill yourself", "suicide", "rape", "molest",
   "hitler", "nazi", "kkk",
-  // Explicit Harassment/Trolling joke terms that we want to time out
   "joke about harassing", "troll joke", "harassment funny", "trolling funny", "trollin", "troller"
 ];
 
@@ -79,13 +80,12 @@ const SEVERE_WORDS = [
 const BAD_WORDS = [...MILD_BAD_WORDS, ...SEVERE_WORDS];
 
 
-// Map for detecting Leetspeak bypasses (e.g. h0e -> hoe)
+// Map for detecting Leetspeak bypasses
 const LEET_MAP = {
   '0': 'o', '1': 'i', '3': 'e', '4': 'a', '5': 's', '7': 't', '@': 'a', '$': 's', '!': 'i', '(': 'c', '+': 't'
 };
 
 // ================= JOIN/LEAVE TRACKER =================
-// Stores user ID -> { count: number, lastJoin: timestamp }
 const joinTracker = new Map(); 
 
 // =====================================================
@@ -95,11 +95,11 @@ const client = new Client({
     GatewayIntentBits.Guilds,
     GatewayIntentBits.GuildMessages,
     GatewayIntentBits.MessageContent,
-    GatewayIntentBits.GuildMembers // Critical for join/leave detection
+    GatewayIntentBits.GuildMembers 
   ]
 });
 
-// Helper: find mod roles (roles that have ManageMessages or ModerateMembers)
+// Helper: find mod roles
 function getModeratorRoles(guild) {
   return guild.roles.cache.filter(role => {
     if (role.managed) return false;
@@ -115,10 +115,7 @@ function containsFilteredWord(text, wordList) {
   let lower = text.toLowerCase();
 
   // --- STEP 1: REMOVE ALLOWED WORDS ---
-  // If the user says "I need assistance", we remove "assistance" from the check string.
-  // The string becomes "I need ". This prevents "ass" from triggering.
   ALLOWED_WORDS.forEach(safeWord => {
-      // We use replaceAll to remove all occurrences of safe words
       if (lower.includes(safeWord)) {
           lower = lower.replaceAll(safeWord, '');
       }
@@ -142,27 +139,24 @@ function containsBadWord(text) {
 
 // Helper: Moderate Nickname 
 async function moderateNickname(member) {
-  // We use the SEVERE_WORDS list here to keep the nickname filter stricter 
-  // than the message filter, as nicknames are permanent.
   if (containsFilteredWord(member.displayName, SEVERE_WORDS) || containsFilteredWord(member.displayName, MILD_BAD_WORDS)) {
     try {
-      // **Bot must have a higher role than the user's highest role for this to work**
       if (member.manageable) {
         await member.setNickname("[moderated nickname by hopper]");
         
         const log = member.guild.channels.cache.get(LOG_CHANNEL_ID);
         if (log) log.send(`🛡️ **Nickname Moderated**\nUser: <@${member.id}>\nOld Name: ||${member.user.username}||\nReason: Inappropriate Username`);
-        return true; // Nickname was moderated
+        return true; 
       } else {
          console.log(`Failed to moderate nickname for ${member.user.tag}: Bot role is lower than user's highest role.`);
-         return false; // Nickname could not be moderated due to permissions
+         return false; 
       }
     } catch (err) {
       console.error(`Failed to moderate nickname for ${member.user.tag}:`, err);
       return false;
     }
   }
-  return false; // No moderation needed
+  return false; 
 }
 
 /**
@@ -185,7 +179,6 @@ async function runAutomatedNicknameScan(guild) {
         
         if (moderatedCount > 0) {
             const log = guild.channels.cache.get(LOG_CHANNEL_ID);
-            // Only log if something was moderated
             if (log) log.send(`✅ **Recurring Scan Complete:** Checked ${members.size} members. Moderated **${moderatedCount}** inappropriate names.`);
         }
         
@@ -198,7 +191,6 @@ async function runAutomatedNicknameScan(guild) {
  * Starts the recurring nickname scan.
  */
 function startAutomatedNicknameScan(guild) {
-    // Run once immediately, then every NICKNAME_SCAN_INTERVAL (5 seconds)
     runAutomatedNicknameScan(guild); 
     
     setInterval(() => {
@@ -214,7 +206,6 @@ client.once('ready', async () => {
   console.log(`✅ Logged in as ${client.user.tag}`);
 
   // --- ANTI-INVITE PROTECTION (ON BOOT) ---
-  // If the bot is already in unauthorized servers when it starts, it will leave them.
   client.guilds.cache.forEach(async (guild) => {
     if (guild.id !== GUILD_ID) {
         console.log(`❌ Found unauthorized server on startup: ${guild.name} (${guild.id}). Leaving...`);
@@ -232,21 +223,20 @@ client.once('ready', async () => {
     status: 'online'
   });
 
-  // START RECURRING NICKNAME CHECK (Runs every 5 seconds)
+  // START RECURRING NICKNAME CHECK
   const guild = client.guilds.cache.get(GUILD_ID);
   if (guild) {
       startAutomatedNicknameScan(guild); 
   }
 
 
-  // Register slash commands (added /sayrp)
+  // Register slash commands (with /sayrp)
   const commands = [
     new SlashCommandBuilder()
       .setName('say')
       .setDescription('Make the bot say something anonymously')
       .addStringOption(opt => opt.setName('text').setDescription('Text for the bot to say').setRequired(true)),
 
-    // --- NEW: /sayrp command ---
     new SlashCommandBuilder()
       .setName('sayrp')
       .setDescription('Speak as a character via webhook')
@@ -262,7 +252,6 @@ client.once('ready', async () => {
         opt.setName('message')
           .setDescription('The message to send')
           .setRequired(true)),
-    // ---------------------------
 
     new SlashCommandBuilder().setName('help').setDescription('Get help'),
     new SlashCommandBuilder().setName('serverinfo').setDescription('Get server information'),
@@ -305,7 +294,6 @@ client.once('ready', async () => {
 });
 
 // ================= ANTI-INVITE PROTECTION (EVENT) =================
-// This triggers immediately if the bot is invited to a new server
 client.on('guildCreate', async (guild) => {
     if (guild.id !== GUILD_ID) {
         console.log(`⚠️ Bot was invited to unauthorized server: ${guild.name} (${guild.id}). Leaving immediately.`);
@@ -333,7 +321,6 @@ client.on('interactionCreate', async (interaction) => {
 
     if (interaction.commandName === 'say') {
       const text = interaction.options.getString('text');
-      // Filter /say command too
       if (containsBadWord(text)) return interaction.reply({ content: "❌ You cannot make me say that.", ephemeral: true });
       await interaction.channel.send(text);
       return interaction.reply({ content: "✅ Sent anonymously", ephemeral: true });
@@ -343,43 +330,50 @@ client.on('interactionCreate', async (interaction) => {
       const character = interaction.options.getString('character');
       const message = interaction.options.getString('message');
       
-      // Filter the message content before sending via webhook
       if (containsBadWord(message)) return interaction.reply({ content: "❌ That message violates the filter and cannot be sent.", ephemeral: true });
 
       let webhookUrl;
       let username;
-      let avatarUrl; // Placeholder avatar URLs
+      let avatarUrl; 
       
       if (character === 'stormy') {
         webhookUrl = STORMY_WEBHOOK_URL;
         username = 'Stormy';
-        // Replace this placeholder with Stormy's actual avatar URL
-        avatarUrl = 'https://i.imgur.com/example_stormy.png'; 
+        avatarUrl = STORMY_AVATAR_URL; 
       } else if (character === 'hops') {
         webhookUrl = HOPS_WEBHOOK_URL;
         username = 'Hops';
-        // Replace this placeholder with Hops' actual avatar URL
-        avatarUrl = 'https://i.imgur.com/example_hops.png'; 
+        avatarUrl = HOPS_AVATAR_URL; 
       } else {
         return interaction.reply({ content: "Invalid character selected.", ephemeral: true });
       }
 
-      if (webhookUrl === 'YOUR_STORMY_WEBHOOK_URL_HERE' || webhookUrl === 'YOUR_HOPS_WEBHOOK_URL_HERE') {
-          return interaction.reply({ content: "❌ Webhook URLs are not configured! Please ask the bot owner to set them up in the code.", ephemeral: true });
+      // Check for placeholder URLs
+      if (webhookUrl.includes('YOUR_') || avatarUrl.includes('example_')) {
+          return interaction.reply({ 
+            content: `❌ **Configuration Error:** The ${username} Webhook URL or Avatar URL has not been configured in the bot's code.`, 
+            ephemeral: true 
+          });
       }
 
       try {
-        await fetch(webhookUrl, {
+        const response = await fetch(webhookUrl, {
           method: 'POST',
           headers: { 'Content-Type': 'application/json' },
           body: JSON.stringify({
             content: message,
             username: username,
             avatar_url: avatarUrl,
+            // Disable mentions in the webhook message
+            allowed_mentions: { parse: [] } 
           })
         });
 
-        // Reply to the user privately
+        if (!response.ok) {
+            console.error(`Webhook failed for ${username}: ${response.statusText}`);
+            return interaction.reply({ content: `❌ Failed to send message as ${username}. Discord API responded with error code: ${response.status}.`, ephemeral: true });
+        }
+
         await interaction.reply({ content: `✅ Message sent as **${username}**!`, ephemeral: true });
 
       } catch (error) {
@@ -614,7 +608,7 @@ client.on('messageCreate', async (message) => {
   const lowerContent = content.toLowerCase();
   const member = message.member;
 
-  // RULE: INAPPROPRIATE RP LOCKDOWN (Uses the combined BAD_WORDS list)
+  // RULE: INAPPROPRIATE RP LOCKDOWN 
   if (message.channel.id === RP_CHANNEL_ID && containsBadWord(lowerContent)) {
       const category = message.guild.channels.cache.get(RP_CATEGORY_ID);
       if (category && category.type === 4) { 
@@ -634,9 +628,7 @@ client.on('messageCreate', async (message) => {
       }
   }
    
-  // **REPETITIVE CHARACTER SPAM RULE REMOVED HERE**
-  
-  // RULE: ANTI-HARASSMENT / ANTI-TROLLING (MUTE) (NEW)
+  // RULE: ANTI-HARASSMENT / ANTI-TROLLING (MUTE)
   const explicitTrollHarassRegex = /(^|\s)(mute|ban|harass|troll|bullying)\s+(that|him|her|them)\s+(\S+|$)|(you\s+(are|re)\s+(a|an)?\s+(troll|bully|harasser))/i;
 
   if (explicitTrollHarassRegex.test(lowerContent)) {
@@ -658,7 +650,7 @@ client.on('messageCreate', async (message) => {
       return;
   }
    
-  // RULE: SELECTIVE ADVERTISING (NEW)
+  // RULE: SELECTIVE ADVERTISING
   const externalAdRegex = /(subscribe to my|go check out my|new video on|follow my insta|patreon|onlyfans|youtube\b|twitch\b|facebook\b|tiktok\b)/i;
   const allowedAds = /(stormy and hops|stormy & hops)/i;
    
@@ -669,7 +661,7 @@ client.on('messageCreate', async (message) => {
       return;
   }
    
-  // RULE: POLITICAL CONTENT SOFT FILTER (NEW)
+  // RULE: POLITICAL CONTENT SOFT FILTER
   const politicalKeywords = ['politics', 'government', 'election', 'congress', 'biden', 'trump', 'conservative', 'liberal', 'democracy', 'republican', 'democrat'];
   let politicalCount = 0;
   for (const keyword of politicalKeywords) {
@@ -706,7 +698,6 @@ client.on('messageCreate', async (message) => {
     await message.delete().catch(() => {});
     
     try {
-      // 30 minute timeout for severe violation
       if (member) await member.timeout(30 * 60 * 1000, "Severe Violation: Slur/Threat/Hate Speech").catch(() => {});
       
       const log = client.channels.cache.get(LOG_CHANNEL_ID);
@@ -749,7 +740,7 @@ client.on('messageCreate', async (message) => {
     return;
   }
 
-  // IMAGE ONLY CHANNEL THREAD SYSTEM (existing)
+  // IMAGE ONLY CHANNEL THREAD SYSTEM
   if (message.channel.id === TARGET_CHANNEL_ID) {
     const hasImage = message.attachments.some(att =>
       att.contentType?.startsWith('image/') ||
@@ -790,10 +781,8 @@ client.on('guildMemberAdd', async (member) => {
   const userId = member.id;
   const now = Date.now();
    
-  // Get existing data
   const userData = joinTracker.get(userId) || { count: 0, lastJoin: 0 };
 
-  // Reset count if last join was more than 15 minutes ago
   if (now - userData.lastJoin > 15 * 60 * 1000) {
     userData.count = 0;
   }
@@ -802,20 +791,16 @@ client.on('guildMemberAdd', async (member) => {
   userData.lastJoin = now;
   joinTracker.set(userId, userData);
 
-  // Logic: "One is fine... ten there has to be something done."
   if (userData.count >= 10) {
-    // Action: Ban the user for trolling
     try {
       await member.ban({ reason: 'Rule 11: Excessive Join/Leave Trolling' });
       const log = client.channels.cache.get(LOG_CHANNEL_ID);
       if (log) log.send(`🔨 **Auto-Ban (Anti-Troll)**\nUser: ${member.user.tag}\nReason: Joined ${userData.count} times rapidly.`);
-      // clear tracking
       joinTracker.delete(userId);
     } catch (err) {
       console.error('Failed to ban troll:', err);
     }
   } else if (userData.count >= 6) {
-    // Action: Log warning
     const log = client.channels.cache.get(LOG_CHANNEL_ID);
     if (log) log.send(`⚠️ **Troll Warning**\nUser: ${member.user.tag} has joined ${userData.count} times recently.`);
   }
@@ -831,7 +816,6 @@ client.on('interactionCreate', async (interaction) => {
       return interaction.reply({ content: "Use inside a thread", ephemeral: true });
     }
     
-    // Check if the user is the thread starter or a moderator
     const isThreadStarter = thread.ownerId === interaction.user.id;
     const isMod = interaction.member.permissions.has(PermissionsBitField.Flags.ManageMessages);
 
@@ -850,7 +834,7 @@ client.on('interactionCreate', async (interaction) => {
       const collector = thread.createMessageCollector({ filter, time: 30000, max: 1 });
       collector.on('collect', async (msg) => {
         try {
-            await thread.setName(msg.content.slice(0, 100)); // Limit length
+            await thread.setName(msg.content.slice(0, 100)); 
             await msg.delete();
             await interaction.followUp({ content: "✅ Title updated", ephemeral: true });
         } catch (e) {
