@@ -22,7 +22,7 @@ if (!process.env.TOKEN) {
 
 // ====================== CONFIG ======================
 // !! IMPORTANT: REPLACE THESE PLACEHOLDERS WITH YOUR ACTUAL WEBHOOK URLS !!
-const STORMY_WEBHOOK_URL = 'YOUR_STORMY_WEBHOOK_URL_HERE'; 
+const STORMY_WEBHOOK_URL = 'https://discord.com/api/webhooks/1447413488216440923/FFxuqEhJnm1JJhMKRoUoy4jSEka4TmqzsNJ9N8q7nbR6G0TV8RYP9P2GCpRxgiNqwBkP'; 
 const HOPS_WEBHOOK_URL = 'YOUR_HOPS_WEBHOOK_URL_HERE';     
 // ---------------------------------
 
