@@ -21,15 +21,14 @@ if (!process.env.TOKEN) {
 
 // ====================== CONFIG ======================
 
-// !! WEBHOOK URLS (FIXED) !!
-const STORMY_WEBHOOK_URL = 'https://discord.com/api/webhooks/1447413488216440923/FFxuqEhJnm1JJhMKRoUoy4jSEka4TmqzsNJ9N8q7nbR6G0TV8RYP9P2GCrRxgiNqwBkP'; 
+// !! WEBHOOK URLS (MUST BE UPDATED TO FIX 401 ERROR) !!
+// CRITICAL: You must copy a fresh webhook URL for Stormy from Discord and replace the placeholder below.
+const STORMY_WEBHOOK_URL = 'https://discord.com/api/webhooks/1447413488216440923/REPLACE_WITH_FRESH_STORMY_WEBHOOK_KEY'; 
 const HOPS_WEBHOOK_URL = 'https://discord.com/api/webhooks/1447423354284806245/DTdo5MLZ88ztpmrUh1lLghCoPGrZzY2Wd86h2SHkx6svfH0qWI8Y-uQQ7Xn-VK-ChTSM'; 
 
-// ** AVATAR URLS (NOW USING GENERIC PLACEHOLDERS TO PREVENT THE ERROR) **
-// NOTE: You can replace these two links with your final character images at any time.
+// ** AVATAR URLS **
 const STORMY_AVATAR_URL = 'https://i.imgur.com/r62Y0c7.png'; // Generic image link
 const HOPS_AVATAR_URL = 'https://i.imgur.com/r62Y0c7.png';     // Generic image link
-// ---------------------------------
 // ---------------------------------
 
 const TARGET_CHANNEL_ID = '1415134887232540764';
@@ -37,7 +36,7 @@ const GUILD_ID = '1369477266958192720';
 const LOG_CHANNEL_ID = '1414286807360602112';           
 const TRANSCRIPT_CHANNEL_ID = '1414354204079689849';   
 const SETUP_POST_CHANNEL = '1445628128423579660';       
-const MUTE_ROLE_ID = '1446530920650899536';            
+const MUTE_ROLE_ID = 'YOUR_CORRECT_MUTE_ROLE_ID'; // <-- **SET THIS ID** (Was incorrectly same as RP Category ID)          
 
 // NEW RP CONFIGURATION
 const RP_CHANNEL_ID = '1421219064985948346';
@@ -351,9 +350,9 @@ client.on('interactionCreate', async (interaction) => {
       }
 
       // Check for placeholder URLs
-      if (webhookUrl.includes('YOUR_') || avatarUrl.includes('example_')) {
+      if (webhookUrl.includes('REPLACE_') || webhookUrl.includes('YOUR_') || avatarUrl.includes('example_')) {
           return interaction.reply({ 
-            content: `❌ **Configuration Error:** The ${username} Webhook URL or Avatar URL has not been configured in the bot's code.`, 
+            content: `❌ **Configuration Error:** The ${username} Webhook URL or Mute Role ID has not been fully configured in the bot's code. Please update the placeholder IDs in the CONFIG block.`, 
             ephemeral: true 
           });
       }
