@@ -611,7 +611,7 @@ client.on('messageCreate', async (message) => {
               }
               await message.delete().catch(() => {});
               const log = client.channels.cache.get(LOG_CHANNEL_ID);
-              if (log) log.send(`🔒 **RP Category Lockdown**\nCategory <#${RP_CATEGORY_ID}> locked down due to suspicious/inappropriate RP attempt by <@${message.author.id}> in <#${RP_CHANNEL_ID}>.\nMessage: ||${message.content}||\n\nThis is the end of the line`);
+              if (log) log.send(`🔒 **RP Category Lockdown**\nCategory <#${RP_CATEGORY_ID}> locked down due to suspicious/inappropriate RP attempt by <@${message.author.id}> in <#${RP_CHANNEL_ID}>.\nMessage: ||${message.content}||`);
               return; 
           } catch (e) {
               console.error("Failed to lock RP category:", e);
@@ -839,9 +839,8 @@ client.on('interactionCreate', async (interaction) => {
 });
 
 // ================= LOGIN + SERVER =================
-// FIX 3: ADDED ERROR CATCHING
 client.login(process.env.TOKEN).catch(error => {
-    // CRITICAL ERROR LOGGING: This will appear in your Render logs if the bot fails to connect.
+    // This CRITICAL line will force the login error message into your Render logs
     console.error(`❌ DISCORD LOGIN FAILED! Check your TOKEN and Intents. Error: ${error.message}`);
     console.error(`If the error is related to 'Disallowed Intents', you must enable them in the Discord Developer Portal.`);
 });
