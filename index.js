@@ -8,10 +8,11 @@ const {
   REST,
   Routes,
   SlashCommandBuilder,
-  PermissionsBitField
+  PermissionsBitField,
+  Partials,           // <--- FIX 1: ADDED
+  AttachmentBuilder   // <--- FIX 1: ADDED
 } = require('discord.js');
 const http = require('http');
-// REMOVED: const fetch = require('node-fetch'); 
 
 if (!process.env.TOKEN) {
   console.error("❌ TOKEN not found. Add TOKEN in Render Environment Variables.");
@@ -19,8 +20,6 @@ if (!process.env.TOKEN) {
 }
 
 // ====================== CONFIG ======================
-
-// REMOVED: STORMY_WEBHOOK_URL and HOPS_WEBHOOK_URL
 
 // ** AVATAR URLS (Kept for consistency, but bot's own avatar is used for Hops) **
 const STORMY_AVATAR_URL = 'https://i.imgur.com/r62Y0c7.png'; 
@@ -98,7 +97,8 @@ const client = new Client({
     GatewayIntentBits.GuildMessages,
     GatewayIntentBits.MessageContent,
     GatewayIntentBits.GuildMembers 
-  ]
+  ],
+  partials: [Partials.Channel, Partials.Message] // <--- FIX 2: ADDED
 });
 
 // Helper: find mod roles
@@ -343,10 +343,10 @@ client.on('interactionCreate', async (interaction) => {
         contentToSend = `**Stormy Bunny:** ${message}`;
         replyContent = `✅ Message sent as **Stormy**!`;
         
-        // Check if the image URL is set and use it as an attachment object
+        // Use AttachmentBuilder to process the URL
         if (STORMY_IMAGE_URL && !STORMY_IMAGE_URL.includes('YOUR_LINK')) {
-            // This is the key change: sending the image URL as a file attachment
-            fileAttachment = [{ attachment: STORMY_IMAGE_URL, name: 'stormy_rp_image.png' }];
+            // Note: AttachmentBuilder handles fetching remote URLs
+            fileAttachment = [new AttachmentBuilder(STORMY_IMAGE_URL, { name: 'stormy_rp_image.png' })];
         } else {
             replyContent += "\n⚠️ **NOTE:** Stormy's image URL placeholder is still set. The image will not be attached until you replace 'YOUR_LINK_TO_STORMY_RP_IMAGE.png' with a real URL in the CONFIG.";
         }
@@ -553,6 +553,7 @@ If they want to close it there will be a Close button on top. When close is conf
       await interaction.deferReply({ ephemeral: true });
 
       try {
+        // Fetch up to 100 messages, including those before the bot started (due to Partials)
         const fetched = await ch.messages.fetch({ limit: 100 });
         const msgs = Array.from(fetched.values()).reverse();
 
@@ -564,21 +565,18 @@ If they want to close it there will be a Close button on top. When close is conf
           const atts = m.attachments.map(a => a.url).join(' ');
           transcript += `[${time}] ${author}: ${content} ${atts}\n`;
         }
-
+        
+        // This part needs the Buffer class
+        const attachment = new AttachmentBuilder(Buffer.from(transcript, 'utf-8'), { name: `transcript-${ch.name}.txt` });
+        
         const tChan = await client.channels.fetch(TRANSCRIPT_CHANNEL_ID);
         if (tChan) {
-          const MAX = 1900;
-          if (transcript.length <= MAX) {
-            await tChan.send({ content: `📄 **Ticket closed**: ${ch.name}\nClosed by ${interaction.user.tag}\n\n${transcript}` });
-          } else {
-            await tChan.send({ content: `📄 **Ticket closed**: ${ch.name}\nClosed by ${interaction.user.tag}\n\nTranscript (first part):` });
-            while (transcript.length > 0) {
-              const part = transcript.slice(0, MAX);
-              transcript = transcript.slice(MAX);
-              await tChan.send(part);
-            }
-          }
+           await tChan.send({ 
+               content: `📄 **Ticket closed**: ${ch.name} (Closed by ${interaction.user.tag})`, 
+               files: [attachment]
+           });
         }
+
 
         await interaction.editReply({ content: '✅ Transcript saved. Deleting ticket channel...', ephemeral: true });
         await ch.delete('Ticket closed');
@@ -613,7 +611,7 @@ client.on('messageCreate', async (message) => {
               }
               await message.delete().catch(() => {});
               const log = client.channels.cache.get(LOG_CHANNEL_ID);
-              if (log) log.send(`🔒 **RP Category Lockdown**\nCategory <#${RP_CATEGORY_ID}> locked down due to suspicious/inappropriate RP attempt by <@${message.author.id}> in <#${RP_CHANNEL_ID}>.\nMessage: ||${message.content}||`);
+              if (log) log.send(`🔒 **RP Category Lockdown**\nCategory <#${RP_CATEGORY_ID}> locked down due to suspicious/inappropriate RP attempt by <@${message.author.id}> in <#${RP_CHANNEL_ID}>.\nMessage: ||${message.content}||\n\nThis is the end of the line`);
               return; 
           } catch (e) {
               console.error("Failed to lock RP category:", e);
@@ -841,7 +839,12 @@ client.on('interactionCreate', async (interaction) => {
 });
 
 // ================= LOGIN + SERVER =================
-client.login(process.env.TOKEN);
+// FIX 3: ADDED ERROR CATCHING
+client.login(process.env.TOKEN).catch(error => {
+    // CRITICAL ERROR LOGGING: This will appear in your Render logs if the bot fails to connect.
+    console.error(`❌ DISCORD LOGIN FAILED! Check your TOKEN and Intents. Error: ${error.message}`);
+    console.error(`If the error is related to 'Disallowed Intents', you must enable them in the Discord Developer Portal.`);
+});
 
 const PORT = process.env.PORT || 3000;
 http.createServer((req, res) => {
